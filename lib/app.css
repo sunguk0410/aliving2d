@@ -65,6 +65,8 @@ select{background:var(--field);border:1px solid #37303e;border-radius:6px;paddin
 #overlay .handle circle{fill:#c42c50;stroke:#fff}
 #overlay .handle.close circle{fill:#2e7dd1}
 #overlay .handle.chest circle{fill:#9a6bd6}
+#overlay .handle.arm circle{fill:#d18a2e}
+#overlay .bone{stroke:#d18a2ecc;stroke-linejoin:round;pointer-events:none}
 #overlay .handle:focus{outline:none}
 #overlay .handle:focus circle,#overlay .handle.dragging circle{stroke:#ffd166}
 #overlay .handle text{fill:#fff;paint-order:stroke;stroke:#000b;font-weight:600;pointer-events:none}

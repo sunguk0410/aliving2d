@@ -17,7 +17,7 @@
 | `engine/player.js` | 캡슐 프론트용 플레이어 `CapsulePlayer` |
 | `engine/bundle.js` | 묶음 쓰기 (rig.json, 무손실 PNG, ZIP). 편집기 「캡슐 모델 내보내기」와 CLI 공용 |
 | `tools/build-bundle.js` | PSD → 묶음 CLI (`--settings`로 편집기 설정 적용) |
-| `engine/demo/` | 플레이어 데모 `index.html?bundles=a,b` |
+| `engine/demo/` | 플레이어 데모 `index.html?bundles=a,b`, 팔 리깅 대시보드 `arms.html?b=sampleA` |
 
 묶음 형식: `rig.json`(canvas, anchors, anchorOffsets, settings, layers[]) + `parts/*.png` + `reactions.json`. 자세한 건 `engine/README.md`.
 
@@ -48,6 +48,7 @@ node tools/build-bundle.js sample2.psd bundles/sampleA   # 데모용 샘플 묶�
 
 ## 진행 상황
 - [x] capsule-rig 엔진 통합, 편집기가 공용 엔진 사용, 「캡슐 모델 내보내기」(2026-11-13)
-- [ ] **팔 리깅**: 좌우 팔 분리, 어깨·팔꿈치 자동 검출(앵커 편집 가능), 손목 목표 위치로 움직이는 2관절 IK. 먼저 팔을 움직였을 때 가려졌던 몸통이 드러나는지 확인할 것
+- [x] 팔 리깅 1~3단계 (2026-11-13): 좌우 분리, 어깨·팔꿈치·손목 검출(편집기 앵커로 보정), FK 각도 + 원근 IK(`armLX/LY` 등), 대시보드 `engine/demo/arms.html`. sample2는 팔 뒤 몸통이 채워져 있음 확인. sample.psd는 handwear에 몸통이 섞여 팔 리그 꺼짐
+- [ ] **팔 앞뒤 순서**: 손이 가슴·얼굴 앞으로 오면 팔을 topwear 앞으로 (지금은 몸 뒤로 숨음). 손이 없는 그림은 손을 만들지 않음
 - [ ] 표정 다양화: 눈웃음·입 모양 파라미터, 홍조·땀·눈물 같은 효과 자동 배치, 편집기에서 표정·모션을 만들어 `reactions.json`으로 저장
 - [ ] see-through Colab 노트북 + 편집기 연동 (이미지 → PSD 자동)

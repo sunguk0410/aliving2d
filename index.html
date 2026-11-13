@@ -145,6 +145,17 @@
       <div class="row"><label>後髪柔らかさ</label><input type="range" id="pSoft" min="0" max="3" step="0.01" value="2"><span class="val"></span></div>
       <div class="row"><label>小物の揺れ</label><input type="range" id="pAccAmp" min="0" max="3" step="0.01" value="1"><span class="val"></span></div>
     </section>
+    <section class="sec" data-sec="arms"><h2>팔 (관절)</h2>
+      <p class="section-hint">팔 레이어가 좌우로 나뉘고 어깨·팔꿈치가 검출된 모델에서만 움직입니다. 각도는 도, 손목 목표는 팔 길이 단위. 관절 위치는 「アンカーを編集」에서 고칩니다.</p>
+      <div class="row"><label>왼팔 어깨 (들기)</label><input type="range" id="pArmLShoulder" min="-90" max="180" step="1" value="0"><span class="val"></span></div>
+      <div class="row"><label>왼팔 팔꿈치 (굽히기)</label><input type="range" id="pArmLElbow" min="-60" max="160" step="1" value="0"><span class="val"></span></div>
+      <div class="row"><label>오른팔 어깨 (들기)</label><input type="range" id="pArmRShoulder" min="-90" max="180" step="1" value="0"><span class="val"></span></div>
+      <div class="row"><label>오른팔 팔꿈치 (굽히기)</label><input type="range" id="pArmRElbow" min="-60" max="160" step="1" value="0"><span class="val"></span></div>
+      <div class="row"><label>왼손목 목표 바깥</label><input type="range" id="pArmLX" min="-1.5" max="1.5" step="0.01" value="0"><span class="val"></span></div>
+      <div class="row"><label>왼손목 목표 위</label><input type="range" id="pArmLY" min="-1.5" max="1.5" step="0.01" value="0"><span class="val"></span></div>
+      <div class="row"><label>오른손목 목표 바깥</label><input type="range" id="pArmRX" min="-1.5" max="1.5" step="0.01" value="0"><span class="val"></span></div>
+      <div class="row"><label>오른손목 목표 위</label><input type="range" id="pArmRY" min="-1.5" max="1.5" step="0.01" value="0"><span class="val"></span></div>
+    </section>
     <section class="sec" data-sec="anchors"><h2>アンカー（基準点）</h2>
       <p class="section-hint">目・口・首などの自動検出位置がずれているときに、プレビュー上でドラッグして直せます。</p>
       <div class="btns">

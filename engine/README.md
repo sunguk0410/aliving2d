@@ -20,7 +20,7 @@
 | `engine/player.js` | 브라우저 플레이어 (`CapsulePlayer`). WebGL 렌더링, 칸 맞춤, 캡슐용 API |
 | `engine/bundle.js` | 묶음 쓰기 (rig.json 생성, 무손실 PNG, ZIP). 편집기와 CLI 공용 |
 | `engine/reactions.default.json` | 기본 표정 8개, 모션 9개, 반응표 7종 |
-| `engine/demo/` | 스터디룸 데모(`index.html?bundles=a,b`), 표정 시트(`sheet.html`), 모션 필름(`film.html`) |
+| `engine/demo/` | 스터디룸 데모(`index.html?bundles=a,b`), 표정 시트(`sheet.html`), 모션 필름(`film.html`), 팔 리깅 대시보드(`arms.html?b=sampleA`) |
 | `tools/build-bundle.js` | PSD → 묶음 CLI |
 | `lib/` | 편집기와 리거 (`rigger.js`, `renderer.js`, `runtime.js` 등). 플레이어도 `lib/runtime.js`, `lib/renderer.js`를 씀 |
 | `tests/` | 원본 동일성(`equivalence`), 애니메이터, 묶음, 플레이어 스모크(`capsule-browser.smoke.js`) |
@@ -93,6 +93,16 @@ bundles/chaerin/
 - `settings`에는 캐릭터별 기본 파라미터를 넣어요. 예: `{ "physAmp": 1.5, "fhAmp": 1.2 }`
 - `anchorOffsets`를 넣으면 자동 검출한 기준점을 보정할 수 있어요 (원본 편집기의 기준점 편집과 같은 키).
 
+### 팔 리그
+
+- 리거가 `handwear`를 좌우(`handwear_l`/`handwear_r`, 화면 기준 왼쪽이 L)로 나누고 `anchors.armL`/`armR`에 `{shoulder, elbow, wrist, width, cut, elbowBy}`를 넣습니다. 팔이 화면 밖으로 잘리면 `cut: true`이고 손목은 추정값입니다. 손은 만들지 않습니다.
+- `handwear`에 몸통까지 들어 있는 PSD(가운데 띠에 픽셀이 10% 넘게 있음)는 찢어지지 않게 팔 리그를 끄고 경고를 남깁니다.
+- 파라미터 (모두 0이면 원본과 같은 결과):
+  - FK: `armLShoulder`/`armRShoulder` 어깨 회전(도, + = 바깥으로 들기), `armLElbow`/`armRElbow` 팔꿈치(도, + = 몸 안쪽으로 굽힘)
+  - IK: `armLX`/`armLY`, `armRX`/`armRY` 손목 목표 = 기본 손목 + (바깥, 위) × 팔 길이. 카메라 손 추적은 이 값을 넣으면 됩니다.
+- IK는 팔꿈치를 "두 뼈가 닿을 수 있는 영역 안에서 자연스러운 팔꿈치에 가장 가까운 점"에 둡니다. 닿지 않아 뼈가 짧아지면 카메라 쪽으로 향한 것으로 보고 원근으로 줄여 그립니다. 해가 하나라 팔꿈치가 튀지 않습니다.
+- 관절 보정 키: `anchorOffsets.armLShoulder|armLElbow|armLWrist`(R도 같음) `{dx, dy}`.
+
 ## reactions.json 형식
 
 ```jsonc
@@ -146,7 +156,8 @@ bundles/chaerin/
 
 ## 알려진 한계와 다음 단계
 
-- **손 동작**(손 흔들기, 책 펴기): 원본에 팔 높이/위치만 있어서 아직 안 됩니다. 다음 단계는 포즈 레이어 교체 + 회전축.
+- **팔 앞뒤 순서**: 팔이 몸통 레이어 뒤에 있어서, 손을 가슴·얼굴 앞으로 가져오면 팔이 몸 뒤로 숨습니다. 다음 단계(팔 앞으로 보내기).
+- **손**: 손이 없는 그림(팔이 화면 밖으로 잘림)은 손을 만들지 않으므로, 팔을 들면 잘린 끝이 보입니다.
 - **큰 고개 돌림**: 깊이 기반 패럴랙스라 ±20도 정도가 자연스러운 한계.
 - **표정 차분**: `^^` 눈웃음, 눈물, 땀은 PSD에 레이어를 추가하고 `toggles`로 켜는 방식이 들어가 있어요. 레이어를 AI로 생성하는 도구는 아직 없음.
 - **눈썹이 앞머리에 가려지는 그림**에서는 눈썹 표정이 잘 안 보여요.

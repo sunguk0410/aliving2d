@@ -26,9 +26,13 @@
     armY: 0, armPos: 0, bust: 2.5, bustY: 1, irisScale: 1, mouthEase: 0.72, eyeEase: 0.3,
     fhAmp: 2, fhSoft: 0.4, eyeCY: 0, eyeCAng: 0, mouthCAng: 0, eyeScaleL: 1, eyeScaleR: 1, mouthScale: 1, accAmp: 1,
     // capsule extensions (0 = upstream behaviour)
-    mouthCForm: 0
+    mouthCForm: 0,
+    // arms: FK angles in degrees (shoulder + = raise outward, elbow + = bend inward)
+    // and IK wrist target offsets in arm lengths (X + = outward, Y + = up)
+    armLShoulder: 0, armLElbow: 0, armRShoulder: 0, armRElbow: 0, armLX: 0, armLY: 0, armRX: 0, armRY: 0
   };
-  const EXTENSIONS = ['mouthCForm'];
+  const ARM_KEYS = ['armLShoulder', 'armLElbow', 'armRShoulder', 'armRElbow', 'armLX', 'armLY', 'armRX', 'armRY'];
+  const EXTENSIONS = ['mouthCForm'].concat(ARM_KEYS);
   const RANGES = {
     angleX: [-1, 1], angleY: [-1, 1], angleZ: [-1, 1], eyeOpenL: [0, 1], eyeOpenR: [0, 1], eyeX: [-1, 1], eyeY: [-1, 1],
     irisScale: [0.5, 1.3], eyeScaleL: [0.5, 1.5], eyeScaleR: [0.5, 1.5], eyeEase: [0, 1], eyeCY: [-1, 1], eyeCAng: [-1, 1],
@@ -36,7 +40,9 @@
     mouthCY: [-1, 1], mouthEase: [0, 1], mouthCAng: [-1, 1], mouthScale: [0.5, 1.5], fhAmp: [0, 3], fhSoft: [0, 2],
     bangL: [-1, 1], bangC: [-1, 1], bangR: [-1, 1], body: [-1, 1], armY: [-1, 1], armPos: [-1, 1], bust: [0, 4],
     bustY: [-3, 3], physAmp: [0, 3], soft: [0, 3], accAmp: [0, 3],
-    mouthCForm: [-1, 1]
+    mouthCForm: [-1, 1],
+    armLShoulder: [-90, 180], armRShoulder: [-90, 180], armLElbow: [-60, 160], armRElbow: [-60, 160],
+    armLX: [-1.5, 1.5], armLY: [-1.5, 1.5], armRX: [-1.5, 1.5], armRY: [-1.5, 1.5]
   };
 
   /**
@@ -56,6 +62,12 @@
       let { nx, ny } = RT.meshSize(L.w, L.h, cell);
       // capsule: mouths are tiny, so give them enough columns to bend smoothly
       if (L.bn === 'mouth_open' || L.bn === 'mouth_close') { nx = Math.max(nx, 12); ny = Math.max(ny, 4); }
+      // capsule: rigged arms bend at the elbow, so they need rows along their length
+      if (L.bn === 'handwear' && L.side && rig.anchors && rig.anchors['arm' + L.side]) {
+        const long = Math.max(L.w, L.h), short = Math.min(L.w, L.h);
+        const nl = Math.max(24, Math.round(long / 24)), ns = Math.max(6, Math.round(short / 24));
+        if (L.h >= L.w) { nx = Math.max(nx, ns); ny = Math.max(ny, nl); } else { nx = Math.max(nx, nl); ny = Math.max(ny, ns); }
+      }
       const nv = (nx + 1) * (ny + 1);
       const base = new Float32Array(nv * 2), uv = new Float32Array(nv * 2);
       let k = 0;
@@ -113,7 +125,104 @@
     M.A = a; M.FS = a.faceScale; M.NP = a.neckPivot; M.BP = a.bodyPivot; M.FC = { x: a.face.cx, y: a.face.cy };
     const ch = off('chest'), fh = a.face.y1 - a.face.y0;
     M.CHEST = { cx: M.NP.cx + (ch.dx || 0), cy: a.neckBottom + fh * 0.60 + (ch.dy || 0), rx: Math.max(1, (a.face.x1 - a.face.x0) * 0.60), ry: Math.max(1, fh * 0.45) };
-    for (const L of M.layers) buildBangWeights(M, L);
+    M.ARMS = {};
+    for (const s of ['L', 'R']) {
+      const r = a['arm' + s]; if (!r) continue;
+      for (const [k, j] of [['shoulder', 'Shoulder'], ['elbow', 'Elbow'], ['wrist', 'Wrist']]) {
+        const d = off('arm' + s + j); r[k].x += d.dx || 0; r[k].y += d.dy || 0;
+      }
+      const S = r.shoulder, E = r.elbow, Wr = r.wrist;
+      const L1 = Math.max(1, Math.hypot(E.x - S.x, E.y - S.y)), L2 = Math.max(1, Math.hypot(Wr.x - E.x, Wr.y - E.y));
+      M.ARMS[s] = { S, E, W: Wr, L1, L2, width: r.width || L1 * 0.3, out: s === 'L' ? -1 : 1,
+        rest1: Math.atan2(E.y - S.y, E.x - S.x), rest2: Math.atan2(Wr.y - E.y, Wr.x - E.x) };
+    }
+    for (const L of M.layers) { buildBangWeights(M, L); buildArmWeights(M, L); }
+  }
+
+  // ---------- arms (capsule extension) ----------
+  // Each arm layer is a two-bone chain: the upper arm turns around the
+  // shoulder, the forearm also around the elbow. L.aw = how much of the elbow
+  // turn a vertex takes (0 upper arm .. 1 forearm), blended across the joint
+  // so the elbow bends as a curve instead of a crease.
+  const DEG = Math.PI / 180;
+  function wrapAngle(a) { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; }
+  function buildArmWeights(M, L) {
+    const R = L.bn === 'handwear' && L.side ? M.ARMS[L.side] : null;
+    if (!R) { L.aw = null; return; }
+    let nx = Math.cos(R.rest1) + Math.cos(R.rest2), ny = Math.sin(R.rest1) + Math.sin(R.rest2);
+    const nl = Math.hypot(nx, ny);
+    if (nl < 1e-3) { nx = Math.cos(R.rest1); ny = Math.sin(R.rest1); } else { nx /= nl; ny /= nl; }
+    const blend = Math.max(8, R.width * 0.6), nv = L.base.length / 2;
+    L.aw = new Float32Array(nv);
+    for (let v = 0; v < nv; v++) {
+      const t = (L.base[v * 2] - R.E.x) * nx + (L.base[v * 2 + 1] - R.E.y) * ny;
+      L.aw[v] = smooth(t / (2 * blend) + 0.5);
+    }
+  }
+
+  /**
+   * Two-bone IK with foreshortening. Target T = rest wrist + (tx outward,
+   * ty up) in arm lengths, pulled in to the arm's reach.
+   *
+   * The elbow is the point closest to a "natural elbow" N that both bones can
+   * still reach: inside the disk of radius L1 around the shoulder and the disk
+   * of radius L2 around T. A bone shorter than its rest length on screen is a
+   * bone pointing toward the camera, so it is drawn foreshortened (k1, k2).
+   * The region is convex, so the elbow moves continuously with the target -
+   * no flipping between the two textbook solutions. N is the rest elbow,
+   * swung outward as the hand rises above the shoulder (elbow out for "hand
+   * on head", elbow down for "hand to chest").
+   */
+  function solveArmIK(M, side, tx, ty) {
+    const R = M.ARMS && M.ARMS[side]; if (!R) return null;
+    const { S, L1, L2, out } = R, reach = L1 + L2;
+    let Tx = R.W.x + tx * out * reach, Ty = R.W.y - ty * reach;
+    const target = { x: Tx, y: Ty };
+    let dx = Tx - S.x, dy = Ty - S.y, d = Math.hypot(dx, dy);
+    if (d > reach) { Tx = S.x + dx / d * reach; Ty = S.y + dy / d * reach; dx = Tx - S.x; dy = Ty - S.y; d = reach; }
+    // natural elbow
+    const lift = smooth((S.y - Ty) / reach * 1.6), sw = R.rest1 - out * lift * 70 * DEG;
+    const Nx = S.x + Math.cos(sw) * L1, Ny = S.y + Math.sin(sw) * L1;
+    const inA = (x, y) => Math.hypot(x - S.x, y - S.y) <= L1 + 1e-6, inB = (x, y) => Math.hypot(x - Tx, y - Ty) <= L2 + 1e-6;
+    let Ex, Ey;
+    if (inA(Nx, Ny) && inB(Nx, Ny)) { Ex = Nx; Ey = Ny; }
+    else {
+      const cands = [];
+      const pa = Math.max(1e-9, Math.hypot(Nx - S.x, Ny - S.y)), Ax = S.x + (Nx - S.x) / pa * L1, Ay = S.y + (Ny - S.y) / pa * L1;
+      if (inB(Ax, Ay)) cands.push([Ax, Ay]);
+      const pb = Math.max(1e-9, Math.hypot(Nx - Tx, Ny - Ty)), Bx = Tx + (Nx - Tx) / pb * L2, By = Ty + (Ny - Ty) / pb * L2;
+      if (inA(Bx, By)) cands.push([Bx, By]);
+      if (!cands.length && d > 1e-9) {   // corners of the lens (circle intersections)
+        const aa = (L1 * L1 - L2 * L2 + d * d) / (2 * d), h = Math.sqrt(Math.max(0, L1 * L1 - aa * aa));
+        const mx = S.x + dx / d * aa, my = S.y + dy / d * aa;
+        cands.push([mx - dy / d * h, my + dx / d * h], [mx + dy / d * h, my - dx / d * h]);
+      }
+      if (!cands.length) cands.push([S.x + Math.cos(R.rest1) * L1, S.y + Math.sin(R.rest1) * L1]);
+      let best = Infinity;
+      for (const c of cands) { const q = Math.hypot(c[0] - Nx, c[1] - Ny); if (q < best) { best = q; Ex = c[0]; Ey = c[1]; } }
+    }
+    const l1 = Math.hypot(Ex - S.x, Ey - S.y), l2 = Math.hypot(Tx - Ex, Ty - Ey);
+    const up = l1 > 1e-6 ? Math.atan2(Ey - S.y, Ex - S.x) : R.rest1;
+    const fore = l2 > 1e-6 ? Math.atan2(Ty - Ey, Tx - Ex) : up + (R.rest2 - R.rest1);
+    return { t1: wrapAngle(up - R.rest1), t2: wrapAngle((fore - up) - (R.rest2 - R.rest1)), k1: l1 / L1, k2: l2 / L2, reach, target, elbow: { x: Ex, y: Ey } };
+  }
+
+  /**
+   * Current arm pose for side 'L' | 'R' (null at rest or when the arm is not
+   * rigged). FK angles (degrees) add to the IK result.
+   */
+  function armPose(M, side, e) {
+    const R = M.ARMS && M.ARMS[side]; if (!R) return null;
+    const fs = e['arm' + side + 'Shoulder'] || 0, fe = e['arm' + side + 'Elbow'] || 0;
+    const tx = e['arm' + side + 'X'] || 0, ty = e['arm' + side + 'Y'] || 0;
+    if (!fs && !fe && !tx && !ty) return null;
+    let t1 = -R.out * fs * DEG, t2 = R.out * fe * DEG, k1 = 1, k2 = 1, target = null;
+    if (tx || ty) { const ik = solveArmIK(M, side, tx, ty); t1 += ik.t1; t2 += ik.t2; k1 = ik.k1; k2 = ik.k2; target = ik.target; }
+    const S = R.S, a1 = R.rest1 + t1, a2 = R.rest2 + t1 + t2;
+    const ax = Math.cos(a1), ay = Math.sin(a1), fx = Math.cos(a2), fy = Math.sin(a2);
+    const E2 = { x: S.x + ax * R.L1 * k1, y: S.y + ay * R.L1 * k1 };
+    const W2 = { x: E2.x + fx * R.L2 * k2, y: E2.y + fy * R.L2 * k2 };
+    return { S, E2, W2, t1, t2, k1, k2, c1: Math.cos(t1), s1: Math.sin(t1), ax, ay, fx, fy, L1: R.L1, target };
   }
 
   // ---------- upstream math (do not edit without re-running the equivalence test) ----------
@@ -141,6 +250,7 @@
     const vOpen = eyeSide === 'L' ? e.eyeOpenL : e.eyeOpenR;
     const mo = e.mouthOpen, mHalfW = (A.mouth.x1 - A.mouth.x0) / 2;
     const nS = L.strands ? L.strands.length : 0;
+    const AP = L.aw ? armPose(M, L.side, e) : null;   // capsule arm rig (null at rest)
     const bcx = L.x + L.w / 2, bcy = L.y + L.h / 2;
     const kind = L.phys === 'sway' ? 'acc' : FRONTISH[bn] ? 'fh' : 'bh';
     const physOn = nS && M.physics && L.su;
@@ -150,6 +260,20 @@
     for (let k = 0; k < n; k += 2) {
       let x = b[k], y = b[k + 1];
       const vi = k >> 1;
+      if (AP) {
+        // 1) turn around the shoulder  2) slide along the upper arm (foreshortening; the
+        // forearm moves with the elbow)  3) turn around the elbow, blended by L.aw
+        // 4) foreshorten the forearm along its axis
+        let rx = x - AP.S.x, ry = y - AP.S.y;
+        x = AP.S.x + rx * AP.c1 - ry * AP.s1; y = AP.S.y + rx * AP.s1 + ry * AP.c1;
+        if (AP.k1 !== 1) { const al = clamp((x - AP.S.x) * AP.ax + (y - AP.S.y) * AP.ay, 0, AP.L1) * (AP.k1 - 1); x += AP.ax * al; y += AP.ay * al; }
+        const wa = L.aw[vi], ta = AP.t2 * wa;
+        if (ta) { const ca = Math.cos(ta), sa = Math.sin(ta); rx = x - AP.E2.x; ry = y - AP.E2.y; x = AP.E2.x + rx * ca - ry * sa; y = AP.E2.y + rx * sa + ry * ca; }
+        if (AP.k2 !== 1 && wa) {
+          const along = (x - AP.E2.x) * AP.fx + (y - AP.E2.y) * AP.fy;
+          if (along > 0) { const f = along * (AP.k2 - 1) * wa; x += AP.fx * f; y += AP.fy * f; }
+        }
+      }
       // --- closed-eye / mouth scale ---
       if (EA && (bn === 'eye_close' || bn === 'eye_close2')) {
         const sE = eyeSide === 'L' ? e.eyeScaleL : e.eyeScaleR;
@@ -275,5 +399,5 @@
     return { masks, items };
   }
 
-  return { DEFAULTS, RANGES, EXTENSIONS, clamp, smooth, createModel, applyAnchors, fadeAlpha, deform, updateSprings, buildFrame };
+  return { DEFAULTS, RANGES, EXTENSIONS, ARM_KEYS, clamp, smooth, createModel, applyAnchors, fadeAlpha, deform, updateSprings, buildFrame, armPose, solveArmIK };
 });

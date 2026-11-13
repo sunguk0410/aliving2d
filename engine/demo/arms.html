@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><link rel="icon" href="data:,">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>팔 리깅 대시보드</title>
+<style>
+  :root { --bg:#14151c; --panel:#1d1f2a; --line:#2c2f3d; --ink:#e9e9f0; --dim:#9a9cb0; --accent:#8fb4ff; --arm:#f0a54a; --rest:#7c8099; --ok:#7fd49b; --warn:#f2c46b; --bad:#ff8a8a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.5 system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
+  header { padding:14px 24px; border-bottom:1px solid var(--line); display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; }
+  header .sub { color:var(--dim); font-size:13px; }
+  header form { margin-left:auto; display:flex; gap:6px; align-items:center; }
+  input[type=text] { background:#272a38; color:var(--ink); border:1px solid #3a3e52; border-radius:8px; padding:6px 10px; font:inherit; width:140px; }
+  button { background:#272a38; color:var(--ink); border:1px solid #3a3e52; border-radius:8px; padding:6px 10px; font:inherit; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.on { background:#33415f; border-color:var(--accent); }
+  main { display:grid; grid-template-columns:minmax(0, 1.25fr) minmax(320px, 1fr); gap:16px; padding:16px 24px; }
+  .box { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  .box h2 { font-size:13px; margin:0 0 10px; color:var(--dim); font-weight:600; }
+  .stage { position:relative; background:repeating-conic-gradient(#232533 0 25%, #1c1e29 0 50%) 0 0/24px 24px; border:1px solid var(--line); border-radius:12px; overflow:hidden; aspect-ratio:1; touch-action:none; cursor:crosshair; }
+  .stage canvas, .stage svg { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  .stage .hint { position:absolute; left:12px; bottom:10px; font-size:12px; color:var(--dim); background:#14151cc0; padding:2px 8px; border-radius:6px; pointer-events:none; }
+  .side { display:flex; flex-direction:column; gap:16px; min-width:0; }
+  .row { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:8px; }
+  .slider { display:grid; grid-template-columns:150px 1fr 52px; gap:8px; align-items:center; font-size:13px; margin-bottom:4px; }
+  .slider span { text-align:right; font-variant-numeric:tabular-nums; color:var(--dim); }
+  .slider input { width:100%; accent-color:var(--arm); }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; font-variant-numeric:tabular-nums; }
+  th, td { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); }
+  th { color:var(--dim); font-weight:600; }
+  .pill { display:inline-block; padding:0 8px; border-radius:99px; font-size:12px; border:1px solid currentColor; }
+  .ok { color:var(--ok); } .warn { color:var(--warn); } .bad { color:var(--bad); }
+  #live { font:12px/1.7 ui-monospace, monospace; color:var(--dim); white-space:pre; overflow-x:auto; }
+  ul.warns { margin:6px 0 0; padding-left:18px; color:var(--warn); font-size:12.5px; }
+  ol.check { margin:0; padding-left:20px; font-size:13px; } ol.check li { margin-bottom:6px; } ol.check b { color:var(--arm); }
+  .gallery { padding:0 24px 24px; }
+  .gallery h2 { font-size:13px; color:var(--dim); margin:0 0 10px; font-weight:600; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:12px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden; cursor:pointer; }
+  .card:hover { border-color:var(--accent); }
+  .card canvas { display:block; width:100%; aspect-ratio:1; background:#20222e; }
+  .card div { padding:6px 10px; font-size:12.5px; }
+  .card small { color:var(--dim); display:block; font-size:11.5px; }
+  .notice { margin:16px 24px 0; padding:12px 16px; border-radius:12px; border:1px solid var(--warn); color:var(--warn); background:#2a2618; }
+  @media (max-width: 900px) { main { grid-template-columns:1fr; padding:16px; } .gallery { padding:0 16px 16px; } header { padding:12px 16px; } .slider { grid-template-columns:120px 1fr 48px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>팔 리깅 대시보드</h1>
+  <span class="sub" id="sub">불러오는 중…</span>
+  <form id="pick"><label class="sub" for="bundle">묶음</label><input type="text" id="bundle" placeholder="sampleA"><button>열기</button></form>
+</header>
+<div class="notice" id="notice" hidden></div>
+
+<main>
+  <div>
+    <div class="stage" id="stage">
+      <canvas id="view"></canvas>
+      <svg id="ov" preserveAspectRatio="none"></svg>
+      <span class="hint">끌기: 가까운 쪽 손목 목표 · Shift+끌기: 다른 쪽 팔</span>
+    </div>
+  </div>
+  <div class="side">
+    <div class="box">
+      <h2>포즈</h2>
+      <div class="row" id="presetBtns"></div>
+      <div class="row">
+        <button id="wave">손 흔들기 (움직임)</button>
+        <button id="follow">마우스 따라가기 (추적 흉내)</button>
+        <button id="reset">초기화</button>
+      </div>
+      <div id="sliders"></div>
+    </div>
+    <div class="box">
+      <h2>겹쳐 보기 · 자동 동작</h2>
+      <div class="row">
+        <button data-show="bones" class="on">뼈대</button>
+        <button data-show="rest">원래 위치</button>
+        <button data-show="mesh">메시</button>
+        <button data-show="weights">팔꿈치 가중치</button>
+        <button data-show="target" class="on">목표점</button>
+      </div>
+      <div class="row">
+        <button data-auto="idle">대기 동작</button>
+        <button data-auto="blink" class="on">깜빡임</button>
+        <button data-auto="phys" class="on">머리 물리</button>
+      </div>
+    </div>
+    <div class="box">
+      <h2>현재 값</h2>
+      <div id="live"></div>
+    </div>
+    <div class="box">
+      <h2>검출 결과</h2>
+      <div id="report"></div>
+    </div>
+    <div class="box">
+      <h2>눈으로 확인할 것</h2>
+      <ol class="check">
+        <li><b>몸통 구멍</b> — 팔을 들거나 벌렸을 때 팔 뒤에 가려졌던 몸통이 비어 보이지 않는가 (「만세」「양팔 벌리기」)</li>
+        <li><b>원근</b> — 「얼굴에 손」처럼 팔이 닿지 않는 자세는 위팔을 짧게 그려 카메라 쪽으로 내민 것처럼 보이게 한다. 「현재 값」의 보이는 길이(×1.00 미만)가 그 양. 어색하지 않은가</li>
+        <li><b>팔꿈치</b> — 굽힌 곳이 접힌 종이처럼 꺾이지 않고 둥글게 휘는가, 위치가 맞는가 (어긋나면 편집기 「アンカーを編集」에서 팔꿈치 점을 옮김)</li>
+        <li><b>어깨 이음매</b> — 팔을 돌릴 때 소매 윗부분이 셔츠 밖으로 튀어나오지 않는가</li>
+        <li><b>앞뒤 순서</b> — 「가슴에 손」「얼굴에 손」에서 팔이 몸 뒤로 숨는다 (팔이 몸통 레이어 뒤에 있음, 4단계에서 처리 예정)</li>
+        <li><b>잘린 팔 끝</b> — 팔이 화면 밖으로 잘린 그림이면, 팔을 들 때 잘린 끝이 드러난다 (손은 만들지 않음)</li>
+      </ol>
+    </div>
+  </div>
+</main>
+
+<section class="gallery">
+  <h2>포즈 모음 (카드를 누르면 위 화면에 적용)</h2>
+  <div class="grid" id="grid"></div>
+</section>
+
+<script src="../../lib/runtime.js"></script><script src="../../lib/renderer.js"></script><script src="../core.js"></script><script src="../animator.js"></script><script src="../player.js"></script>
+<script>
+(async () => {
+  const Core = window.CapsuleCore, $ = id => document.getElementById(id);
+  const q = new URLSearchParams(location.search), bundle = q.get('b') || 'sampleA';
+  $('bundle').value = bundle;
+  $('pick').addEventListener('submit', ev => { ev.preventDefault(); const v = $('bundle').value.trim(); if (v) location.search = '?b=' + encodeURIComponent(v); });
+  const base = '../../bundles/' + bundle + '/';
+
+  const SL = [
+    ['armLShoulder', '왼팔 어깨 (들기 °)', 1], ['armLElbow', '왼팔 팔꿈치 (굽힘 °)', 1],
+    ['armRShoulder', '오른팔 어깨 (들기 °)', 1], ['armRElbow', '오른팔 팔꿈치 (굽힘 °)', 1],
+    ['armLX', '왼손목 목표 바깥', 0.01], ['armLY', '왼손목 목표 위', 0.01],
+    ['armRX', '오른손목 목표 바깥', 0.01], ['armRY', '오른손목 목표 위', 0.01]
+  ];
+  const ZERO = Object.fromEntries(SL.map(s => [s[0], 0]));
+  const PRESETS = [
+    ['기본', '차렷', {}],
+    ['만세', '어깨 FK', { armLShoulder: 165, armRShoulder: 165, armLElbow: 10, armRElbow: 10 }],
+    ['양팔 벌리기', '어깨 FK', { armLShoulder: 85, armRShoulder: 85 }],
+    ['손 흔들기', '오른팔 FK', { armRShoulder: 110, armRElbow: 70 }],
+    ['허리에 손', 'FK', { armLShoulder: 35, armLElbow: 110, armRShoulder: 35, armRElbow: 110 }],
+    // IK presets aim at body landmarks, so they work for any proportions
+    ['가슴에 손', '오른손 IK → 가슴', M => aim(M, 'R', M.CHEST.cx + fw(M) * 0.12, M.CHEST.cy)],
+    ['얼굴에 손', '왼손 IK → 뺨', M => aim(M, 'L', M.A.face.cx - fw(M) * 0.28, M.A.face.cy + fh(M) * 0.18)],
+    ['머리에 손', '오른손 IK → 정수리', M => aim(M, 'R', M.A.face.cx + fw(M) * 0.15, M.A.face.y0 + fh(M) * 0.05)],
+    ['손 모으기', '양손 IK → 몸 앞', M => Object.assign(aim(M, 'L', M.A.face.cx - 10, M.CHEST.cy + fh(M) * 0.55), aim(M, 'R', M.A.face.cx + 10, M.CHEST.cy + fh(M) * 0.55))]
+  ];
+  function fw(M) { return M.A.face.x1 - M.A.face.x0; }
+  function fh(M) { return M.A.face.y1 - M.A.face.y0; }
+  /** IK params that put the wrist of `side` on PSD point (x, y). */
+  function aim(M, side, x, y) {
+    const R = M.ARMS && M.ARMS[side]; if (!R) return {};
+    const reach = R.L1 + R.L2, rg = Core.RANGES['arm' + side + 'X'], c = v => Math.max(rg[0], Math.min(rg[1], v));
+    return { ['arm' + side + 'X']: c((x - R.W.x) / (reach * R.out)), ['arm' + side + 'Y']: c((R.W.y - y) / reach) };
+  }
+  const paramsOf = (preset, M) => typeof preset === 'function' ? preset(M) : preset;
+
+  let rig;
+  try { rig = await (await fetch(base + 'rig.json')).json(); }
+  catch (err) { $('sub').textContent = '묶음을 열 수 없습니다: ' + base + ' (node tools/build-bundle.js sample2.psd bundles/sampleA)'; return; }
+
+  // ---------- report ----------
+  const armOn = !!(rig.anchors.armL || rig.anchors.armR);
+  $('sub').innerHTML = bundle + ' · ' + rig.canvas.w + '×' + rig.canvas.h + ' · 팔 리그 ' + (armOn ? '<span class="pill ok">켜짐</span>' : '<span class="pill bad">꺼짐</span>');
+  const armWarn = (rig.warnings || []).filter(w => /腕|handwear/.test(w));
+  if (!armOn) { $('notice').hidden = false; $('notice').textContent = '이 모델은 팔 리그가 꺼져 있습니다. ' + (armWarn.join(' ') || 'handwear 레이어가 없거나 좌우로 나뉘지 않았습니다.'); }
+  {
+    const fmt = p => Math.round(p.x) + ', ' + Math.round(p.y);
+    const len = (a, b) => Math.round(Math.hypot(a.x - b.x, a.y - b.y));
+    const off = rig.anchorOffsets || {};
+    let h = '<table><tr><th></th><th>왼팔 (화면 왼쪽)</th><th>오른팔</th></tr>';
+    const row = (name, f) => { h += '<tr><th>' + name + '</th>' + ['armL', 'armR'].map(k => '<td>' + (rig.anchors[k] ? f(rig.anchors[k], k) : '—') + '</td>').join('') + '</tr>'; };
+    row('어깨', a => fmt(a.shoulder)); row('팔꿈치', a => fmt(a.elbow)); row('손목', a => fmt(a.wrist));
+    row('위팔 / 아래팔', a => len(a.shoulder, a.elbow) + ' / ' + len(a.elbow, a.wrist) + ' px');
+    row('팔 폭', a => a.width + ' px');
+    row('팔꿈치 찾은 방법', a => a.elbowBy === 'bend' ? '<span class="ok">굽은 곳</span>' : '<span class="warn">비율 추정</span>');
+    row('화면 밖 잘림', a => a.cut ? '<span class="warn">예 (손목 추정)</span>' : '<span class="ok">아니오</span>');
+    row('편집기 보정', (a, k) => ['Shoulder', 'Elbow', 'Wrist'].filter(j => off[k + j]).map(j => ({ Shoulder: '어깨', Elbow: '팔꿈치', Wrist: '손목' })[j]).join(', ') || '없음');
+    h += '</table>';
+    const layers = rig.layers.filter(L => /^handwear/.test(L.name)).map(L => L.name + ' (' + L.w + '×' + L.h + ')').join(', ');
+    h += '<div class="row" style="margin-top:8px;color:var(--dim);font-size:12.5px">팔 레이어: ' + (layers || '없음') + '</div>';
+    if (armWarn.length) h += '<ul class="warns">' + armWarn.map(w => '<li>' + w + '</li>').join('') + '</ul>';
+    $('report').innerHTML = h;
+  }
+
+  // ---------- main player ----------
+  const auto = { idle: false, blink: true, rand: false, phys: true };
+  const p = await CapsulePlayer.load($('view'), base, { focus: 'full', auto: Object.assign({}, auto), liveliness: 0 });
+  const M = p.model;
+  const vals = Object.assign({}, ZERO);
+  const ctrls = {};
+  for (const [k, label, step] of SL) {
+    const r = Core.RANGES[k], d = document.createElement('div'); d.className = 'slider';
+    d.innerHTML = '<label for="s_' + k + '">' + label + '</label><input type="range" id="s_' + k + '" min="' + r[0] + '" max="' + r[1] + '" step="' + step + '" value="0"><span></span>';
+    const inp = d.querySelector('input'), out = d.querySelector('span');
+    ctrls[k] = { set(v) { inp.value = v; out.textContent = step < 1 ? Number(v).toFixed(2) : Math.round(v) + '°'; } };
+    ctrls[k].set(0);
+    inp.addEventListener('input', () => { setVals({ [k]: Number(inp.value) }); });
+    inp.addEventListener('dblclick', () => setVals({ [k]: 0 }));
+    $('sliders').append(d);
+  }
+  function setVals(o) {
+    Object.assign(vals, o);
+    for (const k in o) ctrls[k] && ctrls[k].set(vals[k]);
+    p.setParams(o);
+  }
+  function applyPreset(params) { waving = false; $('wave').classList.remove('on'); setVals(Object.assign({}, ZERO, paramsOf(params, M))); }
+  for (const [name, , params] of PRESETS) { const b = document.createElement('button'); b.textContent = name; b.onclick = () => applyPreset(params); $('presetBtns').append(b); }
+  $('reset').onclick = () => applyPreset({});
+
+  let waving = false, follow = false;
+  $('wave').onclick = () => { waving = !waving; $('wave').classList.toggle('on', waving); if (waving) setVals(Object.assign({}, ZERO, { armRShoulder: 110 })); };
+  $('follow').onclick = () => { follow = !follow; $('follow').classList.toggle('on', follow); };
+  const show = { bones: true, rest: false, mesh: false, weights: false, target: true };
+  document.querySelectorAll('[data-show]').forEach(b => b.onclick = () => { const k = b.dataset.show; show[k] = !show[k]; b.classList.toggle('on', show[k]); });
+  document.querySelectorAll('[data-auto]').forEach(b => b.onclick = () => { const k = b.dataset.auto; auto[k] = !auto[k]; b.classList.toggle('on', auto[k]); p.setAuto(k, auto[k]); });
+
+  // ---------- pointer: drag a wrist target ----------
+  const stage = $('stage'), ov = $('ov');
+  function toPsd(ev) {
+    const r = stage.getBoundingClientRect(), v = p._view, c = $('view');
+    const dx = (ev.clientX - r.left) / r.width * c.width, dy = (ev.clientY - r.top) / r.height * c.height;
+    return { x: (dx - v.tx) / v.s, y: (dy - v.ty) / v.s };
+  }
+  function nearestSide(pt, flip) {
+    const cands = ['L', 'R'].filter(s => M.ARMS && M.ARMS[s]);
+    if (!cands.length) return null;
+    let s = cands.length === 1 ? cands[0] : (pt.x < M.A.face.cx ? 'L' : 'R');
+    if (flip && cands.length === 2) s = s === 'L' ? 'R' : 'L';
+    return s;
+  }
+  function aimAt(pt, side) {
+    setVals(Object.assign(aim(M, side, pt.x, pt.y), { ['arm' + side + 'Shoulder']: 0, ['arm' + side + 'Elbow']: 0 }));
+  }
+  let drag = null;
+  stage.addEventListener('pointerdown', ev => {
+    const pt = toPsd(ev), side = nearestSide(pt, ev.shiftKey); if (!side) return;
+    drag = { id: ev.pointerId, side }; stage.setPointerCapture(ev.pointerId); waving = false; $('wave').classList.remove('on'); aimAt(pt, side);
+  });
+  stage.addEventListener('pointermove', ev => {
+    if (drag && ev.pointerId === drag.id) aimAt(toPsd(ev), drag.side);
+    else if (follow && !drag) { const pt = toPsd(ev), side = nearestSide(pt, ev.shiftKey); if (side) aimAt(pt, side); }
+  });
+  const end = ev => { if (drag && ev.pointerId === drag.id) drag = null; };
+  stage.addEventListener('pointerup', end); stage.addEventListener('pointercancel', end);
+
+  // ---------- overlay ----------
+  const NS = 'http://www.w3.org/2000/svg';
+  const el = (tag, a) => { const n = document.createElementNS(NS, tag); for (const k in a) n.setAttribute(k, a[k]); return n; };
+  function drawOverlay() {
+    const c = $('view'), v = p._view, e = p.lastPose; if (!v || !e) return;
+    ov.setAttribute('viewBox', '0 0 ' + c.width + ' ' + c.height);
+    const S = pt => [pt.x * v.s + v.tx, pt.y * v.s + v.ty], u = c.width / Math.max(1, stage.clientWidth);
+    const kids = [];
+    for (const side of ['L', 'R']) {
+      const R = M.ARMS && M.ARMS[side]; if (!R) continue;
+      const L = M.layers.find(x => x.aw && x.side === side);
+      if (L && (show.mesh || show.weights)) {
+        // L.cur is the deformed mesh (PSD space, before the player's view transform)
+        const nv = L.cur.length / 2;
+        if (show.mesh) {
+          let d = '';
+          for (let t = 0; t < L.indices.length; t += 3) {
+            const a = L.indices[t], b = L.indices[t + 1], cc = L.indices[t + 2];
+            const pa = S({ x: L.cur[a * 2], y: L.cur[a * 2 + 1] }), pb = S({ x: L.cur[b * 2], y: L.cur[b * 2 + 1] }), pc = S({ x: L.cur[cc * 2], y: L.cur[cc * 2 + 1] });
+            d += 'M' + pa + 'L' + pb + 'L' + pc + 'Z';
+          }
+          kids.push(el('path', { d, fill: 'none', stroke: '#8fb4ff66', 'stroke-width': 0.8 * u }));
+        }
+        if (show.weights) for (let i = 0; i < nv; i++) {
+          const w = L.aw[i], q = S({ x: L.cur[i * 2], y: L.cur[i * 2 + 1] });
+          kids.push(el('circle', { cx: q[0], cy: q[1], r: 3 * u, fill: 'rgb(' + Math.round(80 + 175 * w) + ',' + Math.round(160 - 60 * w) + ',' + Math.round(255 - 200 * w) + ')' }));
+        }
+      }
+      if (show.rest) kids.push(el('polyline', { points: [R.S, R.E, R.W].map(S).join(' '), fill: 'none', stroke: '#c8cbe0', 'stroke-width': 2 * u, 'stroke-dasharray': 6 * u + ' ' + 5 * u, opacity: 0.8 }));
+      const P = Core.armPose(M, side, e);
+      const cur = P ? [P.S, P.E2, P.W2] : [R.S, R.E, R.W];
+      if (show.bones) {
+        kids.push(el('polyline', { points: cur.map(S).join(' '), fill: 'none', stroke: '#f0a54a', 'stroke-width': 3 * u, 'stroke-linejoin': 'round', opacity: 0.95 }));
+        cur.forEach((pt, i) => { const q = S(pt); kids.push(el('circle', { cx: q[0], cy: q[1], r: (i === 1 ? 7 : 6) * u, fill: ['#ff6b6b', '#5aa9ff', '#ffd166'][i], stroke: '#fff', 'stroke-width': 1.5 * u })); });
+      }
+      if (show.target && P && P.target) {
+        const q = S(P.target), r = 10 * u;
+        kids.push(el('path', { d: 'M' + (q[0] - r) + ',' + q[1] + 'h' + 2 * r + 'M' + q[0] + ',' + (q[1] - r) + 'v' + 2 * r, stroke: '#7fd49b', 'stroke-width': 2 * u }));
+        kids.push(el('circle', { cx: q[0], cy: q[1], r: r * 0.7, fill: 'none', stroke: '#7fd49b', 'stroke-width': 2 * u }));
+      }
+    }
+    ov.replaceChildren(...kids);
+  }
+  function liveText() {
+    const e = p.lastPose; if (!e) return '';
+    const lines = [];
+    for (const side of ['L', 'R']) {
+      if (!M.ARMS || !M.ARMS[side]) { lines.push((side === 'L' ? '왼팔 ' : '오른팔') + '  리그 없음'); continue; }
+      const P = Core.armPose(M, side, e);
+      const deg = r => (r / Math.PI * 180).toFixed(0).padStart(4) + '°';
+      lines.push((side === 'L' ? '왼팔 ' : '오른팔') + '  어깨 회전 ' + (P ? deg(P.t1) : '   0°') + '  팔꿈치 회전 ' + (P ? deg(P.t2) : '   0°') +
+        '  보이는 길이 위팔 ×' + (P ? P.k1.toFixed(2) : '1.00') + ' 아래팔 ×' + (P ? P.k2.toFixed(2) : '1.00'));
+    }
+    return lines.join('\n');
+  }
+  let t0 = performance.now();
+  (function loop(now) {
+    requestAnimationFrame(loop);
+    if (waving) { const t = (now - t0) / 1000; p.setParams({ armRElbow: 55 + 30 * Math.sin(t * 7) }); ctrls.armRElbow.set(55 + 30 * Math.sin(t * 7)); }
+    drawOverlay();
+    $('live').textContent = liveText();
+  })(t0);
+
+  // ---------- gallery ----------
+  for (const [name, note, params] of PRESETS) {
+    const card = document.createElement('div'); card.className = 'card';
+    card.innerHTML = '<canvas></canvas><div>' + name + '<small>' + note + '</small></div>';
+    card.onclick = () => { applyPreset(params); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+    $('grid').append(card);
+    const g = await CapsulePlayer.load(card.querySelector('canvas'), base, { focus: 'full', autoplay: false, auto: { idle: false, rand: false, blink: false, phys: false }, pixelRatio: 1 });
+    g.setParams(Object.assign({}, ZERO, paramsOf(params, g.model)));
+    for (let i = 0; i < 90; i++) g.step(1 / 60);
+  }
+  window.__armsReady = true;
+})();
+</script>
+</body>
+</html>

@@ -23,7 +23,8 @@
   // tracking). Everything else is per-character tuning that the bundle keeps.
   const POSE_KEYS = ['angleX', 'angleY', 'angleZ', 'body', 'eyeOpenL', 'eyeOpenR', 'eyeX', 'eyeY',
     'brow', 'browAngL', 'browAngR', 'browAngSym', 'mouthOpen', 'mouthForm', 'mouthCForm',
-    'bangL', 'bangC', 'bangR', 'armY', 'armPos'];
+    'bangL', 'bangC', 'bangR', 'armY', 'armPos',
+    'armLShoulder', 'armLElbow', 'armRShoulder', 'armRElbow', 'armLX', 'armLY', 'armRX', 'armRY'];
 
   /** Tuning values that differ from the engine defaults (rig.json "settings"). */
   function tuningSettings(params, defaults) {
