@@ -1,0 +1,19 @@
+{
+  "name": "capsule-model-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "애니풍 그림 → 파츠 PSD → 자동 리깅 → 캡슐 캐릭터 모델을 만드는 로컬 도구 (based on Anime2.5DRig, MIT)",
+  "license": "MIT",
+  "scripts": {
+    "start": "python obs_server.py --port 8000",
+    "test": "npm run test:node && npm run test:python",
+    "test:node": "node tests/rigger.test.js && node tests/runtime.test.js && node tests/face-features.test.js && node tests/psd.test.js && node tests/equivalence.test.js && node tests/animator.test.js && node tests/bundle.test.js",
+    "test:python": "python -m unittest discover -s tests -p \"test_*.py\"",
+    "test:browser": "node tests/run-browser.js",
+    "test:player": "node tests/capsule-browser.smoke.js",
+    "build:bundle": "node tools/build-bundle.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

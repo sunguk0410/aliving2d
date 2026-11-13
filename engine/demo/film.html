@@ -1,0 +1,16 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="icon" href="data:,"><style>body{margin:0;background:#20222c;color:#ddd;font:12px sans-serif}.g{display:flex;gap:4px;padding:4px;flex-wrap:wrap}.c{text-align:center}img{width:150px;height:200px;background:#2c2f3d;display:block}</style></head><body><div class="g" id="g"></div><canvas id="cv" style="width:300px;height:400px;position:absolute;left:-9999px"></canvas>
+<script src="../../lib/runtime.js"></script><script src="../../lib/renderer.js"></script><script src="../core.js"></script><script src="../animator.js"></script><script src="../player.js"></script>
+<script>
+(async()=>{
+ const q=new URLSearchParams(location.search), bundle=q.get('b')||'sampleA', trig=q.get('t')||'AWAY', lv=Number(q.get('i')||3);
+ const p=await CapsulePlayer.load(cv,'../../bundles/'+bundle+'/',{focus:'upper',autoplay:false,auto:{rand:false,blink:false},pixelRatio:1,preserveDrawingBuffer:true});
+ for(let i=0;i<30;i++)p.step(1/30);
+ p.react(trig,lv); let t=0;
+ const step=Number(q.get('dt')||250), total=Number(q.get('ms')||3000);
+ for(let ms=0;ms<=total;ms+=step){
+   while(t<ms){p.step(1/60);t+=1000/60;}
+   const d=document.createElement('div');d.className='c';d.innerHTML='<img src="'+cv.toDataURL()+'"><div>'+ms+'ms</div>';g.appendChild(d);
+ }
+ window.__done=true;
+})();
+</script></body></html>

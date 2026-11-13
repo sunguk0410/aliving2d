@@ -1,0 +1,15 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="icon" href="data:,"><style>body{margin:0;background:#20222c;color:#ddd;font:12px sans-serif}.g{display:grid;grid-template-columns:repeat(8,var(--s,180px));gap:6px;padding:6px}.c{text-align:center}canvas{width:var(--s,180px);height:var(--s,180px);background:#2c2f3d;display:block}</style></head><body><div class="g" id="g"></div>
+<script src="../../lib/runtime.js"></script><script src="../../lib/renderer.js"></script><script src="../core.js"></script><script src="../animator.js"></script><script src="../player.js"></script>
+<script>
+(async()=>{
+ const q=new URLSearchParams(location.search), bundle=q.get('b')||'sampleA';
+ const R=await (await fetch('../../bundles/'+bundle+'/reactions.json')).json();
+ const names=(q.get('only')||Object.keys(R.expressions).join(',')).split(','); document.body.style.setProperty('--s',(q.get('px')||180)+'px');
+ for(const n of names){
+  const d=document.createElement('div');d.className='c';d.innerHTML='<canvas></canvas><div>'+n+'</div>';g.appendChild(d);
+  const p=await CapsulePlayer.load(d.querySelector('canvas'),'../../bundles/'+bundle+'/',{focus:'face',scale:Number(q.get('z')||1),autoplay:false,auto:{idle:false,rand:false,blink:false},pixelRatio:1});
+  p.setExpression(n); for(let i=0;i<60;i++)p.step(1/60);
+ }
+ window.__done=true;
+})();
+</script></body></html>

@@ -1,0 +1,9 @@
+node_modules/
+bundles/
+__pycache__/
+*.pyc
+
+# Sample art belongs to its original authors (not covered by the MIT license).
+# Kept locally for tests; never commit it.
+sample.psd
+sample2.psd
