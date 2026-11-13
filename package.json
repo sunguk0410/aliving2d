@@ -11,6 +11,8 @@
     "test:python": "python -m unittest discover -s tests -p \"test_*.py\"",
     "test:browser": "node tests/run-browser.js",
     "test:player": "node tests/capsule-browser.smoke.js",
+    "test:seethrough": "node tests/seethrough-browser.smoke.js",
+    "build:colab": "python seethrough/build_colab.py",
     "build:bundle": "node tools/build-bundle.js"
   },
   "engines": {

@@ -51,11 +51,27 @@
     <div id="appStatus" role="status" aria-live="polite">PSDを読み込むと編集を始められます</div>
     <div id="drop">
       <div class="drop-symbol" aria-hidden="true">＋</div><p class="eyebrow">YOUR ART, IN MOTION</p>
-      <h2>イラストに、動きを。</h2>
-      <p>パーツ分けしたPSDをドロップ。<br>目・口・髪を読み取り、その場で動き出します。</p>
-      <p class="drop-hint">RGB / 8bit PSD・128MBまで<br>レイヤー名は face / eyewhite / mouth_open や「顔・白目・前髪」など。フォルダにも対応。</p>
+      <h2>그림 한 장으로 캐릭터 모델을</h2>
+      <p>애니풍 캐릭터 그림(PNG·JPG)을 놓으면 see-through가 파츠 PSD로 나누고,<br>바로 리깅해서 움직입니다. 파츠 PSD가 이미 있으면 PSD를 놓아도 됩니다.</p>
+      <div class="st-box" id="stBox">
+        <label for="stCode">see-through 변환 서버</label>
+        <div class="st-row">
+          <input type="text" id="stCode" placeholder="연결 코드 붙여넣기 (https://….trycloudflare.com#토큰)" autocomplete="off" spellcheck="false">
+          <button class="btn" type="button" id="stCheck">연결 확인</button>
+        </div>
+        <p class="st-state" id="stState" data-state="none">연결 안 됨</p>
+        <p class="drop-hint">서버가 없으면 <a href="seethrough/see_through_colab.ipynb" download>Colab 노트북</a>을 Colab에 올려 「모두 실행」하고, 마지막 셀의 연결 코드를 붙여넣으세요.<br>GPU 컴퓨터에서는 <code>python seethrough/server.py</code></p>
+      </div>
+      <div class="st-job" id="stJob" hidden>
+        <div class="st-job-head"><span id="stJobStage">준비 중</span><span id="stJobTime"></span></div>
+        <div class="st-bar"><span id="stJobBar"></span></div>
+        <pre id="stJobLog"></pre>
+        <button class="btn" type="button" id="stCancel">변환 중지</button>
+      </div>
       <div class="btns drop-actions">
-        <button class="btn primary" type="button" id="btnFile">PSDファイルを選ぶ</button>
+        <button class="btn primary" type="button" id="btnImage">그림 선택</button>
+        <button class="btn" type="button" id="btnFile">PSDファイルを選ぶ</button>
+        <button class="btn" type="button" id="btnSavePsd" hidden>변환된 PSD 저장</button>
         <button class="btn" type="button" data-sample="A" title="sample2.psd を読み込む">サンプルAを読み込む</button>
         <button class="btn" type="button" data-sample="B" title="sample.psd を読み込む">サンプルBを読み込む</button>
         <button class="btn" type="button" id="btnReadme2">READMEを読む</button>
@@ -63,7 +79,7 @@
       <div class="progress" id="loadProgress" hidden><span></span></div>
       <p id="dropStatus"></p>
       <button class="btn" type="button" id="btnCancelLoad" hidden>読み込みを中止</button>
-      <input type="file" id="fileInput" accept=".psd,.json,application/json" hidden>
+      <input type="file" id="fileInput" accept=".psd,.json,application/json,.png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" hidden>
     </div>
   </div>
   <div id="panel">
@@ -247,6 +263,7 @@
 <script src="lib/devices.js"></script>
 <script src="lib/recorder.js"></script>
 <script src="lib/obs-sync.js"></script>
+<script src="lib/seethrough.js"></script>
 <script src="lib/app.js"></script>
 </body>
 </html>
