@@ -121,6 +121,23 @@ for (const s of ['L', 'R']) {
   assert.ok(moved > 10 && still > 5, 'elbow bend moves the forearm only (' + moved + ' / ' + still + ')');
 }
 
+// front: the forearm is drawn again on top when the hand comes in front of the body
+{
+  const rest = pose({ breath: 0, breathHead: 0 });
+  assert.strictEqual(Core.armFront(M, 'R', rest), 0, 'rest arm stays behind');
+  assert.ok(!Core.buildFrame(M, rest).items.some(it => it.front), 'no front item at rest');
+  const R = M.ARMS.R, reach = R.L1 + R.L2;
+  const chest = pose({ breath: 0, breathHead: 0, armRX: (M.CHEST.cx - R.W.x) / (reach * R.out), armRY: (R.W.y - M.CHEST.cy) / reach });
+  near(Core.armFront(M, 'R', chest), 1, 1e-6, 'hand on the chest is in front');
+  assert.strictEqual(Core.armFront(M, 'L', chest), 0, 'the other arm stays behind');
+  const out = pose({ armRShoulder: 85 });
+  assert.strictEqual(Core.armFront(M, 'R', out), 0, 'arm out to the side stays behind');
+  const fr = Core.buildFrame(M, chest);
+  const last = fr.items[fr.items.length - 1];
+  assert.ok(last.front && last.L.side === 'R' && last.valpha === last.L.aw, 'front forearm drawn last with per-vertex alpha');
+  assert.strictEqual(fr.items.filter(it => it.front).length, 1);
+}
+
 // anchor offsets move the joints
 {
   const M2 = Core.createModel(rig, { anchorOffsets: { armLElbow: { dx: 5, dy: -20 } } });

@@ -225,6 +225,25 @@
     return { S, E2, W2, t1, t2, k1, k2, c1: Math.cos(t1), s1: Math.sin(t1), ax, ay, fx, fy, L1: R.L1, target };
   }
 
+  /**
+   * How much of the forearm is in front of the body, 0..1. The arm layer sits
+   * behind topwear/face (as painted), so a hand brought to the chest or face
+   * would vanish; buildFrame draws the forearm once more on top with this
+   * strength. Two cues: the hand moved inward past the shoulder line, or the
+   * upper arm is foreshortened (pointing at the camera).
+   */
+  function armFront(M, side, e, P) {
+    const R = M.ARMS && M.ARMS[side];
+    P = P || (R ? armPose(M, side, e) : null);
+    if (!P) return 0;
+    const o = M.ARMS[side === 'L' ? 'R' : 'L'];
+    const sw = o ? Math.abs(o.S.x - R.S.x) : (M.A.face.x1 - M.A.face.x0) * 1.3;
+    const inward = R.out * (R.S.x - P.W2.x);
+    const f1 = smooth((inward - sw * 0.05) / (sw * 0.25));
+    const f2 = smooth((0.92 - P.k1) / 0.25);
+    return Math.max(f1, f2);
+  }
+
   // ---------- upstream math (do not edit without re-running the equivalence test) ----------
   function fadeAlpha(M, L, e, alt) {
     const blinkVariant = M.blinkVariant;
@@ -386,7 +405,7 @@
   function buildFrame(M, e, extraAlpha) {
     const alt = { L: false, R: false };
     for (const L of M.layers) if (L.fade === 'eyeClose2' && L.side && L.visible && L.opacity > 0) alt[L.side] = true;
-    const items = [], masks = [];
+    const items = [], masks = [], front = [];
     for (const L of M.layers) {
       const isMask = L.bn === 'eyewhite' && !!L.side;
       const xa = extraAlpha ? extraAlpha(L) : 1;
@@ -395,9 +414,12 @@
       deform(M, L, e);
       if (isMask) masks.push({ L, side: L.side });
       if (alpha >= 0.004) items.push({ L, alpha, clip: L.bn === 'irides' && L.side ? L.side : null });
+      // capsule: forearm in front of the body (same mesh, drawn again on top, fading in past the elbow)
+      if (L.aw && alpha >= 0.004) { const f = armFront(M, L.side, e); if (f > 0.004) front.push({ L, alpha: alpha * f, clip: null, valpha: L.aw, front: true }); }
     }
+    for (const it of front) items.push(it);
     return { masks, items };
   }
 
-  return { DEFAULTS, RANGES, EXTENSIONS, ARM_KEYS, clamp, smooth, createModel, applyAnchors, fadeAlpha, deform, updateSprings, buildFrame, armPose, solveArmIK };
+  return { DEFAULTS, RANGES, EXTENSIONS, ARM_KEYS, clamp, smooth, createModel, applyAnchors, fadeAlpha, deform, updateSprings, buildFrame, armPose, solveArmIK, armFront };
 });
