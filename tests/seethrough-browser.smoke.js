@@ -56,7 +56,7 @@ const TOKEN = 'smoke' + Date.now().toString(36);
     const st = await page.evaluate(() => window.Anime25D.state());
     assert.strictEqual(st.modelName, 'character.psd');
     assert.ok(st.layers >= 14, 'rigged layers: ' + st.layers);
-    assert.strictEqual(await page.evaluate(() => !!document.getElementById('btnSavePsd').hidden), false, 'PSD can be saved');
+    assert.strictEqual(await page.evaluate(() => !!document.getElementById('btnSaveConverted').hidden), false, 'PSD can be saved');
     assert.strictEqual(await page.evaluate(() => localStorage.getItem('capsule.seeThrough')), `http://127.0.0.1:${PORT}#${TOKEN}`, 'code remembered');
 
     // cancel

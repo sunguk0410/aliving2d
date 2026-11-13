@@ -1,73 +1,77 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ko">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<meta name="description" content="パーツ分けPSDをドロップするだけで、自動リギングされて動き出す2.5Dアバターツール">
+<meta name="description" content="파츠 PSD를 자동 리깅해서 캡슐(CAPSULE) 앱용 캐릭터 모델을 만드는 편집기">
 <title>Capsule Model Studio</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23421827'/%3E%3Ctext x='16' y='23' font-size='20' font-family='sans-serif' font-weight='800' text-anchor='middle' fill='%23ff9cb0'%3EA%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23421827'/%3E%3Ctext x='16' y='23' font-size='20' font-family='sans-serif' font-weight='800' text-anchor='middle' fill='%23ff9cb0'%3EC%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="lib/app.css">
 </head>
 <body>
 <header>
-  <div class="brand"><span class="brand-mark" aria-hidden="true">C</span><div><h1>Capsule Model Studio</h1><span>2.5D MODEL STUDIO · <span id="appVersion">v2.0</span></span></div></div>
-  <div class="sample-actions" role="group" aria-label="サンプルを読み込む">
-    <button class="btn" type="button" data-sample="A" title="sample2.psd を読み込む">サンプルA</button>
-    <button class="btn" type="button" data-sample="B" title="sample.psd を読み込む">サンプルB</button>
-  </div>
-  <span id="modelName">モデル未読込</span>
-  <button class="obs-chip" type="button" id="obsChip" hidden title="OBS連携の設定を開く">OBS</button>
+  <div class="brand"><span class="brand-mark" aria-hidden="true">C</span><div><h1>Capsule Model Studio</h1><span id="appVersion"></span></div></div>
+  <span id="modelName">모델 없음</span>
   <div class="header-actions">
-    <button class="btn primary" type="button" id="btnOpen" title="PSDを開く（Ctrl+O）">PSDを開く</button>
-    <div class="btn-group" role="group" aria-label="履歴">
-      <button class="btn icon" type="button" id="btnUndo" disabled title="元に戻す（Ctrl+Z）" aria-label="元に戻す">↶</button>
-      <button class="btn icon" type="button" id="btnRedo" disabled title="やり直す（Ctrl+Shift+Z）" aria-label="やり直す">↷</button>
+    <button class="btn" type="button" id="btnOpen" title="PSD 열기 (Ctrl+O)">PSD 열기</button>
+    <div class="btn-group" role="group" aria-label="실행 기록">
+      <button class="btn icon" type="button" id="btnUndo" disabled title="실행 취소 (Ctrl+Z)" aria-label="실행 취소">↶</button>
+      <button class="btn icon" type="button" id="btnRedo" disabled title="다시 실행 (Ctrl+Shift+Z)" aria-label="다시 실행">↷</button>
     </div>
-    <button class="btn" type="button" id="btnPause" data-model-action disabled aria-pressed="false" title="一時停止（Space）">一時停止</button>
-    <button class="btn" type="button" id="btnPng" data-model-action disabled title="現在のポーズを透過PNGで保存">PNG保存</button>
-    <button class="btn" type="button" id="btnRecord" data-model-action disabled title="モーションを動画で保存">録画</button>
-    <button class="btn" type="button" id="btnReadme">使い方</button>
+    <button class="btn" type="button" id="btnHelp" title="도움말 (?)">도움말</button>
+    <button class="btn primary" type="button" id="btnExportBundle" data-model-action disabled title="rig.json + 파츠 PNG + reactions.json 을 ZIP으로">캡슐 모델 내보내기</button>
   </div>
 </header>
+
 <div id="main">
   <div id="stage" class="checker">
     <div id="viewport">
-      <canvas id="cv" aria-label="アバターのプレビュー"></canvas>
+      <canvas id="cv" aria-label="캐릭터 미리보기"></canvas>
       <svg id="overlay" aria-hidden="true"></svg>
     </div>
-    <div id="stageLabel">PREVIEW <span>背景の市松模様は出力されません</span></div>
     <div id="stageTools">
-      <span id="recBadge" hidden>● REC</span>
-      <button class="stage-btn" type="button" id="btnAnchorMode" data-model-action disabled aria-pressed="false" title="アンカー編集（E）">アンカー編集</button>
-      <button class="stage-btn" type="button" id="btnZoom" title="ホイールで拡大、ドラッグで移動。クリックで全体表示（F）">全体</button>
+      <button class="stage-btn" type="button" id="btnAnchorMode" data-model-action disabled aria-pressed="false" title="기준점 맞추기 (E)">기준점</button>
+      <button class="stage-btn" type="button" id="btnPause" data-model-action disabled aria-pressed="false" title="일시정지 (Space)">일시정지</button>
+      <button class="stage-btn" type="button" id="btnBg" title="배경 바꾸기 (B)">배경</button>
+      <button class="stage-btn" type="button" id="btnZoom" title="휠로 확대, 끌어서 이동. 누르면 전체 보기 (F)">전체</button>
       <span id="fps" aria-hidden="true"></span>
     </div>
-    <div id="anchorHint" hidden>点をドラッグして基準位置を調整（矢印キーで1px・Shift+矢印で10px）。Esc または E で終了</div>
+    <div id="anchorHint" hidden>점을 끌어 기준점을 맞추세요 (화살표 1px · Shift+화살표 10px). Esc 또는 E로 끝내기</div>
     <div id="camPreview" hidden>
-      <canvas id="camCanvas" width="192" height="144" aria-label="カメラ映像のプレビュー"></canvas>
-      <button type="button" id="camPreviewClose" aria-label="カメラ映像を隠す" title="カメラ映像を隠す">✕</button>
+      <canvas id="camCanvas" width="192" height="144" aria-label="카메라 화면"></canvas>
+      <button type="button" id="camPreviewClose" aria-label="카메라 화면 숨기기" title="카메라 화면 숨기기">✕</button>
     </div>
-    <div id="appStatus" role="status" aria-live="polite">PSDを読み込むと編集を始められます</div>
+    <div id="appStatus" role="status" aria-live="polite">PSD를 열면 편집을 시작합니다</div>
+
     <div id="drop">
-      <div class="drop-symbol" aria-hidden="true">＋</div><p class="eyebrow">YOUR ART, IN MOTION</p>
       <h2>그림 한 장으로 캐릭터 모델을</h2>
-      <p>파츠로 나뉜 PSD를 놓으면 바로 리깅해서 움직입니다.</p>
+      <p class="lead">파츠로 나뉜 PSD를 여기에 놓으면 자동으로 리깅해서 움직입니다.</p>
+      <div class="drop-actions">
+        <button class="btn primary big" type="button" id="btnFile">PSD 열기</button>
+        <button class="btn" type="button" data-sample="A" title="sample2.psd">샘플 A</button>
+        <button class="btn" type="button" data-sample="B" title="sample.psd">샘플 B</button>
+      </div>
+      <div class="progress" id="loadProgress" hidden><span></span></div>
+      <p id="dropStatus"></p>
+      <button class="btn" type="button" id="btnCancelLoad" hidden>불러오기 중지</button>
+
       <div class="st-box" id="stBox">
-        <p class="st-title">그림만 있으면: Colab에서 PSD로 바꾸기 (무료)</p>
+        <p class="st-title">그림만 있다면 — Colab에서 PSD로 바꾸기 (무료)</p>
         <ol class="st-steps">
           <li><a href="seethrough/see_through_colab.ipynb" download>Colab 노트북</a>을 받아 <a href="https://colab.research.google.com/" target="_blank" rel="noopener">Colab</a>에 올립니다 (파일 → 노트 업로드)</li>
-          <li>런타임 유형을 <b>T4 GPU</b>로 바꾸고 「모두 실행」 → 파일 선택 버튼에서 그림을 고릅니다</li>
+          <li>런타임 유형을 <b>T4 GPU</b>로 바꾸고 「모두 실행」 → 파일 선택에서 그림을 고릅니다</li>
           <li>몇 분 뒤 PSD가 다운로드되면 <b>이 화면에 놓습니다</b></li>
         </ol>
         <details class="st-auto" id="stAuto">
           <summary>자동 연결 (유료 Colab · GPU 컴퓨터)</summary>
-          <p class="drop-hint">변환 서버를 열면 그림을 여기에 바로 놓을 수 있습니다. 무료 Colab에서는 규정상 쓰지 마세요. GPU 컴퓨터에서는 <code>python seethrough/server.py</code></p>
+          <p class="hint">변환 서버를 열면 그림을 여기에 바로 놓을 수 있습니다. 무료 Colab에서는 규정상 쓰지 마세요. GPU 컴퓨터에서는 <code>python seethrough/server.py</code></p>
           <div class="st-row">
             <input type="text" id="stCode" placeholder="연결 코드 (https://…#토큰)" autocomplete="off" spellcheck="false">
             <button class="btn" type="button" id="stCheck">연결 확인</button>
           </div>
           <p class="st-state" id="stState" data-state="none">연결 안 됨</p>
+          <button class="btn" type="button" id="btnImage" hidden>그림 선택</button>
         </details>
       </div>
       <div class="st-job" id="stJob" hidden>
@@ -76,190 +80,138 @@
         <pre id="stJobLog"></pre>
         <button class="btn" type="button" id="stCancel">변환 중지</button>
       </div>
-      <div class="btns drop-actions">
-        <button class="btn primary" type="button" id="btnFile">PSDファイルを選ぶ</button>
-        <button class="btn" type="button" id="btnImage" hidden>그림 선택 (자동 연결)</button>
-        <button class="btn" type="button" id="btnSavePsd" hidden>변환된 PSD 저장</button>
-        <button class="btn" type="button" data-sample="A" title="sample2.psd を読み込む">サンプルAを読み込む</button>
-        <button class="btn" type="button" data-sample="B" title="sample.psd を読み込む">サンプルBを読み込む</button>
-        <button class="btn" type="button" id="btnReadme2">READMEを読む</button>
-      </div>
-      <div class="progress" id="loadProgress" hidden><span></span></div>
-      <p id="dropStatus"></p>
-      <button class="btn" type="button" id="btnCancelLoad" hidden>読み込みを中止</button>
       <input type="file" id="fileInput" accept=".psd,.json,application/json,.png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" hidden>
     </div>
   </div>
-  <div id="panel">
-    <div class="panel-head"><div><p class="eyebrow">WORKSPACE</p><h2>モデルを調整</h2></div>
-      <div class="panel-head-actions"><button class="btn compact" type="button" id="btnShortcuts" title="キーボードショートカット（?）">ショートカット</button><button class="btn compact" type="button" id="btnCollapse">すべて畳む</button></div></div>
-    <label class="search-box">設定を検索<input type="search" id="controlSearch" placeholder="目、髪、口、レイヤー…" autocomplete="off"></label>
-    <p id="searchEmpty" hidden>一致する設定がありません</p>
 
-    <section class="sec" data-sec="auto"><h2>自動</h2>
-      <div class="toggles">
-        <button type="button" class="tg on" id="tgIdle">アイドル</button>
-        <button type="button" class="tg on" id="tgBlink">自動まばたき</button>
-        <button type="button" class="tg on" id="tgRand">ランダム動作</button>
-        <button type="button" class="tg on" id="tgTalk">ランダム口パク</button>
-        <button type="button" class="tg" id="tgCam">カメラ追従</button>
-        <button type="button" class="tg" id="tgMouse">マウス追従</button>
-        <button type="button" class="tg" id="tgMic">マイク口パク</button>
-        <button type="button" class="tg on" id="tgPhys">髪の物理</button>
+  <aside id="panel">
+    <nav class="tabs" role="tablist" aria-label="편집 단계">
+      <button type="button" role="tab" class="tab" data-tab="check" aria-selected="true">점검</button>
+      <button type="button" role="tab" class="tab" data-tab="play" aria-selected="false">움직여 보기</button>
+      <button type="button" role="tab" class="tab" data-tab="tune" aria-selected="false">모델 조정</button>
+      <button type="button" role="tab" class="tab" data-tab="layers" aria-selected="false">레이어</button>
+    </nav>
+
+    <section class="pane" data-pane="check" role="tabpanel">
+      <p class="pane-lead">자동 리깅 결과를 확인하고, 어긋난 기준점을 맞춥니다.</p>
+      <div class="card">
+        <h3>리깅 결과</h3>
+        <p id="rigInfo" class="hint">모델 없음</p>
+        <ul id="diagnostics"></ul>
+      </div>
+      <div class="card">
+        <h3>기준점</h3>
+        <p class="hint">눈·입·목·팔 관절의 자동 위치가 그림과 어긋나면, 미리보기에서 점을 끌어 맞춥니다.</p>
+        <div class="btns">
+          <button class="btn" type="button" id="btnAnchorMode2" data-model-action disabled aria-pressed="false">기준점 맞추기<kbd>E</kbd></button>
+          <button class="btn" type="button" id="btnResetAnchors" data-model-action disabled>자동 위치로</button>
+        </div>
+        <p class="hint" id="anchorSummary"></p>
+      </div>
+      <div class="card">
+        <h3>작업</h3>
+        <p class="hint">조정한 값은 이 브라우저에 모델별로 자동 저장됩니다. 다른 컴퓨터로 옮길 때는 설정 파일을 씁니다.</p>
+        <div class="btns">
+          <button class="btn" type="button" id="btnExportSettings" data-model-action disabled>설정 파일 저장</button>
+          <button class="btn" type="button" id="btnImportSettings" data-model-action disabled>설정 파일 열기</button>
+          <button class="btn" type="button" id="btnResetAll" data-model-action disabled>처음 상태로</button>
+          <button class="btn" type="button" id="btnSaveConverted" hidden>변환된 PSD 저장</button>
+        </div>
+        <p class="hint" id="bundleStatus">「캡슐 모델 내보내기」는 rig.json · 파츠 PNG · reactions.json 을 ZIP으로 저장합니다. 기준점 · 모델 조정 · 레이어 설정이 함께 들어갑니다.</p>
+        <input type="file" id="settingsInput" accept=".json,application/json" hidden>
       </div>
     </section>
-    <section class="sec" data-sec="preset"><h2>表情プリセット</h2>
-      <div class="btns presets">
-        <button class="btn" type="button" data-preset="neutral">通常<kbd>1</kbd></button>
-        <button class="btn" type="button" data-preset="smile">笑顔<kbd>2</kbd></button>
-        <button class="btn" type="button" data-preset="usume">薄目<kbd>3</kbd></button>
-        <button class="btn" type="button" data-preset="surprise">驚き<kbd>4</kbd></button>
-        <button class="btn" type="button" data-preset="jito">ジト目<kbd>5</kbd></button>
-        <button class="btn" type="button" data-preset="winkL">ウインク左<kbd>6</kbd></button>
-        <button class="btn" type="button" data-preset="winkR">ウインク右<kbd>7</kbd></button>
+
+    <section class="pane" data-pane="play" role="tabpanel" hidden>
+      <p class="pane-lead">미리보기용입니다. 여기 값은 모델에 저장되지 않습니다.</p>
+      <div class="card">
+        <h3>자동 동작</h3>
+        <div class="toggles">
+          <button type="button" class="tg on" id="tgIdle">대기 동작</button>
+          <button type="button" class="tg on" id="tgBlink">눈 깜빡임</button>
+          <button type="button" class="tg on" id="tgRand">시선 이동</button>
+          <button type="button" class="tg on" id="tgTalk">말하기</button>
+          <button type="button" class="tg on" id="tgPhys">흔들림</button>
+          <button type="button" class="tg" id="tgMouse">마우스 보기</button>
+        </div>
       </div>
-      <p class="section-hint">同じボタンかキーをもう一度押すと解除。<kbd>0</kbd> で解除。</p>
-    </section>
-    <section class="sec" data-sec="head"><h2>顔の向き</h2>
-      <div class="row"><label>角度 X</label><input type="range" id="pAngleX" min="-1" max="1" step="0.01" value="0"><span class="val"></span></div>
-      <div class="row"><label>角度 Y</label><input type="range" id="pAngleY" min="-1" max="1" step="0.01" value="0"><span class="val"></span></div>
-      <div class="row"><label>角度 Z</label><input type="range" id="pAngleZ" min="-1" max="1" step="0.01" value="0"><span class="val"></span></div>
-    </section>
-    <section class="sec" data-sec="eyes"><h2>目</h2>
-      <div class="row"><label>左目の開き</label><input type="range" id="pEyeL" min="0" max="1" step="0.01" value="1"><span class="val"></span></div>
-      <div class="row"><label>右目の開き</label><input type="range" id="pEyeR" min="0" max="1" step="0.01" value="1"><span class="val"></span></div>
-      <div class="row"><label>視線 X</label><input type="range" id="pEyeX" min="-1" max="1" step="0.01" value="0"><span class="val"></span></div>
-      <div class="row"><label>視線 Y</label><input type="range" id="pEyeY" min="-1" max="1" step="0.01" value="0"><span class="val"></span></div>
-      <div class="row"><label>瞳スケール</label><input type="range" id="pIrisScale" min="0.5" max="1.3" step="0.01" value="1"><span class="val"></span></div>
-      <div class="row"><label>閉じ目スケール左</label><input type="range" id="pEyeScaleL" min="0.5" max="1.5" step="0.01" value="1"><span class="val"></span></div>
-      <div class="row"><label>閉じ目スケール右</label><input type="range" id="pEyeScaleR" min="0.5" max="1.5" step="0.01" value="1"><span class="val"></span></div>
-      <div class="row"><label>閉じやすさ</label><input type="range" id="pEyeEase" min="0" max="1" step="0.01" value="0.3"><span class="val"></span></div>
-      <div class="row"><label>差分 上下</label><input type="range" id="pEyeCY" min="-1" max="1" step="0.01" value="0"><span class="val"></span></div>
-      <div class="row"><label>差分 角度</label><input type="range" id="pEyeCAng" min="-1" max="1" step="0.01" value="0"><span class="val"></span></div>
-    </section>
-    <section class="sec" data-sec="brow"><h2>眉</h2>
-      <div class="row"><label>眉（上下）</label><input type="range" id="pBrow" min="-1" max="1" step="0.01" value="0"><span class="val"></span></div>
-      <div class="row"><label>眉角度 対称</label><input type="range" id="pBrowAngSym" min="-1" max="1" step="0.01" value="0"><span class="val"></span></div>
-      <div class="row"><label>眉角度 左</label><input type="range" id="pBrowAngL" min="-1" max="1" step="0.01" value="0"><span class="val"></span></div>
-      <div class="row"><label>眉角度 右</label><input type="range" id="pBrowAngR" min="-1" max="1" step="0.01" value="0"><span class="val"></span></div>
-    </section>
-    <section class="sec" data-sec="mouth"><h2>口</h2>
-      <div class="row"><label>開き</label><input type="range" id="pMouthOpen" min="0" max="1" step="0.01" value="0"><span class="val"></span></div>
-      <div class="row"><label>形（笑い）</label><input type="range" id="pMouthForm" min="-1" max="1" step="0.01" value="0"><span class="val"></span></div>
-      <div class="row"><label>閉じ口 形（笑い／への字）</label><input type="range" id="pMouthCForm" min="-1" max="1" step="0.01" value="0"><span class="val"></span></div>
-      <div class="row"><label>閉じ口 上下</label><input type="range" id="pMouthCY" min="-1" max="1" step="0.01" value="0"><span class="val"></span></div>
-      <div class="row"><label>閉じやすさ</label><input type="range" id="pMouthEase" min="0" max="1" step="0.01" value="0.72"><span class="val"></span></div>
-      <div class="row"><label>閉じ口 角度</label><input type="range" id="pMouthCAng" min="-1" max="1" step="0.01" value="0"><span class="val"></span></div>
-      <div class="row"><label>口スケール</label><input type="range" id="pMouthScale" min="0.5" max="1.5" step="0.01" value="1"><span class="val"></span></div>
-    </section>
-    <section class="sec" data-sec="bangs"><h2>前髪</h2>
-      <div class="row"><label>揺れ</label><input type="range" id="pFhAmp" min="0" max="3" step="0.01" value="2"><span class="val"></span></div>
-      <div class="row"><label>柔らかさ</label><input type="range" id="pFhSoft" min="0" max="2" step="0.01" value="0.4"><span class="val"></span></div>
-      <div class="row"><label>ブロック左</label><input type="range" id="pBangL" min="-1" max="1" step="0.01" value="0"><span class="val"></span></div>
-      <div class="row"><label>ブロック中央</label><input type="range" id="pBangC" min="-1" max="1" step="0.01" value="0"><span class="val"></span></div>
-      <div class="row"><label>ブロック右</label><input type="range" id="pBangR" min="-1" max="1" step="0.01" value="0"><span class="val"></span></div>
-    </section>
-    <section class="sec" data-sec="body"><h2>体・物理</h2>
-      <div class="row"><label>体の傾き</label><input type="range" id="pBody" min="-1" max="1" step="0.01" value="0"><span class="val"></span></div>
-      <div class="row"><label>腕の高さ</label><input type="range" id="pArmY" min="-1" max="1" step="0.01" value="0"><span class="val"></span></div>
-      <div class="row"><label>腕位置補正</label><input type="range" id="pArmPos" min="-1" max="1" step="0.01" value="0"><span class="val"></span></div>
-      <div class="row"><label>胸の揺れ</label><input type="range" id="pBust" min="0" max="4" step="0.01" value="2.5"><span class="val"></span></div>
-      <div class="row"><label>胸位置 上下</label><input type="range" id="pBustY" min="-3" max="3" step="0.01" value="1"><span class="val"></span></div>
-      <div class="row"><label>後髪の揺れ</label><input type="range" id="pPhysAmp" min="0" max="3" step="0.01" value="2"><span class="val"></span></div>
-      <div class="row"><label>後髪柔らかさ</label><input type="range" id="pSoft" min="0" max="3" step="0.01" value="2"><span class="val"></span></div>
-      <div class="row"><label>小物の揺れ</label><input type="range" id="pAccAmp" min="0" max="3" step="0.01" value="1"><span class="val"></span></div>
-    </section>
-    <section class="sec" data-sec="arms"><h2>팔 (관절)</h2>
-      <p class="section-hint">팔 레이어가 좌우로 나뉘고 어깨·팔꿈치가 검출된 모델에서만 움직입니다. 각도는 도, 손목 목표는 팔 길이 단위. 관절 위치는 「アンカーを編集」에서 고칩니다.</p>
-      <div class="row"><label>왼팔 어깨 (들기)</label><input type="range" id="pArmLShoulder" min="-90" max="180" step="1" value="0"><span class="val"></span></div>
-      <div class="row"><label>왼팔 팔꿈치 (굽히기)</label><input type="range" id="pArmLElbow" min="-60" max="160" step="1" value="0"><span class="val"></span></div>
-      <div class="row"><label>오른팔 어깨 (들기)</label><input type="range" id="pArmRShoulder" min="-90" max="180" step="1" value="0"><span class="val"></span></div>
-      <div class="row"><label>오른팔 팔꿈치 (굽히기)</label><input type="range" id="pArmRElbow" min="-60" max="160" step="1" value="0"><span class="val"></span></div>
-      <div class="row"><label>왼손목 목표 바깥</label><input type="range" id="pArmLX" min="-1.5" max="1.5" step="0.01" value="0"><span class="val"></span></div>
-      <div class="row"><label>왼손목 목표 위</label><input type="range" id="pArmLY" min="-1.5" max="1.5" step="0.01" value="0"><span class="val"></span></div>
-      <div class="row"><label>오른손목 목표 바깥</label><input type="range" id="pArmRX" min="-1.5" max="1.5" step="0.01" value="0"><span class="val"></span></div>
-      <div class="row"><label>오른손목 목표 위</label><input type="range" id="pArmRY" min="-1.5" max="1.5" step="0.01" value="0"><span class="val"></span></div>
-    </section>
-    <section class="sec" data-sec="anchors"><h2>アンカー（基準点）</h2>
-      <p class="section-hint">目・口・首などの自動検出位置がずれているときに、プレビュー上でドラッグして直せます。</p>
-      <div class="btns">
-        <button class="btn" type="button" id="btnAnchorMode2" data-model-action disabled aria-pressed="false">アンカーを編集<kbd>E</kbd></button>
-        <button class="btn" type="button" id="btnResetAnchors" data-model-action disabled>自動検出の位置に戻す</button>
+      <div class="card">
+        <h3>표정</h3>
+        <div class="btns presets">
+          <button class="btn" type="button" data-preset="neutral">기본<kbd>1</kbd></button>
+          <button class="btn" type="button" data-preset="smile">웃음<kbd>2</kbd></button>
+          <button class="btn" type="button" data-preset="usume">실눈<kbd>3</kbd></button>
+          <button class="btn" type="button" data-preset="surprise">놀람<kbd>4</kbd></button>
+          <button class="btn" type="button" data-preset="jito">째려보기<kbd>5</kbd></button>
+          <button class="btn" type="button" data-preset="winkL">왼쪽 윙크<kbd>6</kbd></button>
+          <button class="btn" type="button" data-preset="winkR">오른쪽 윙크<kbd>7</kbd></button>
+        </div>
+        <p class="hint">한 번 더 누르거나 <kbd>0</kbd>으로 해제</p>
       </div>
-      <p class="section-hint" id="anchorSummary"></p>
-    </section>
-    <section class="sec" data-sec="tracking"><h2>カメラ・マイク</h2>
-      <p class="section-hint">カメラ追従は顔のランドマークから、頭の向き・まばたき・視線・口・眉・笑顔を読み取ります。</p>
-      <div class="btns">
-        <button class="btn" type="button" id="btnCalibrate" disabled title="カメラ追従中に、正面を向いて自然な表情で押してください">正面を記録（キャリブレーション）</button>
-        <button class="btn" type="button" id="btnClearCalibration" disabled>記録を消す</button>
+      <div class="card">
+        <h3>카메라 · 마이크</h3>
+        <div class="toggles">
+          <button type="button" class="tg" id="tgCam">카메라로 따라하기</button>
+          <button type="button" class="tg" id="tgMic">마이크로 입 움직이기</button>
+        </div>
+        <details class="more">
+          <summary>카메라 · 마이크 설정</summary>
+          <div class="btns">
+            <button class="btn" type="button" id="btnCalibrate" disabled title="카메라를 켜고 정면을 본 채 자연스러운 표정으로 누르세요">정면 기억하기</button>
+            <button class="btn" type="button" id="btnClearCalibration" disabled>기억 지우기</button>
+          </div>
+          <p class="hint" id="calibrationStatus"></p>
+          <label class="check-row"><input type="checkbox" id="prefLinkEyes"> 두 눈 깜빡임 같이 (끄면 윙크 인식)</label>
+          <label class="check-row"><input type="checkbox" id="prefTrackBrow"> 눈썹 따라하기</label>
+          <label class="check-row"><input type="checkbox" id="prefTrackSmile"> 웃는 입 따라하기</label>
+          <label class="check-row"><input type="checkbox" id="prefCamPreview"> 카메라 화면 작게 보기</label>
+          <div id="prefRows"></div>
+          <div class="meter" id="micMeter" title="마이크 입력 (노란 선은 잡음 차단 기준)"><span class="meter-level"></span><span class="meter-gate"></span></div>
+        </details>
       </div>
-      <p class="section-hint" id="calibrationStatus">未記録（標準の顔の比率で判定します）</p>
-      <label class="check-row"><input type="checkbox" id="prefLinkEyes"> 左右のまばたきを連動（オフでウインクを検出）</label>
-      <label class="check-row"><input type="checkbox" id="prefTrackBrow"> 眉を追跡</label>
-      <label class="check-row"><input type="checkbox" id="prefTrackSmile"> 笑顔（口の形）を追跡</label>
-      <label class="check-row"><input type="checkbox" id="prefCamPreview"> カメラ映像を小さく表示</label>
-      <div class="row"><label>頭の感度</label><input type="range" id="prefHeadGain" min="0.3" max="2" step="0.01"><span class="val"></span></div>
-      <div class="row"><label>まばたき感度</label><input type="range" id="prefEyeGain" min="0.5" max="2" step="0.01"><span class="val"></span></div>
-      <div class="row"><label>口の感度</label><input type="range" id="prefMouthGain" min="0.5" max="2.5" step="0.01"><span class="val"></span></div>
-      <div class="row"><label>眉の感度</label><input type="range" id="prefBrowGain" min="0" max="2" step="0.01"><span class="val"></span></div>
-      <div class="row"><label>視線の感度</label><input type="range" id="prefGazeGain" min="0" max="2" step="0.01"><span class="val"></span></div>
-      <div class="row"><label>なめらかさ</label><input type="range" id="prefSmoothing" min="0" max="1" step="0.01"><span class="val"></span></div>
-      <div class="row"><label>マイク感度</label><input type="range" id="prefMicGain" min="0.25" max="4" step="0.01"><span class="val"></span></div>
-      <div class="row"><label>ノイズゲート</label><input type="range" id="prefMicGate" min="0" max="0.5" step="0.01"><span class="val"></span></div>
-      <div class="meter" id="micMeter" title="マイク入力（線はノイズゲート）"><span class="meter-level"></span><span class="meter-gate"></span></div>
+      <div class="card"><h3>머리 · 몸</h3><div data-group="head"></div></div>
+      <div class="card"><h3>눈 · 입 · 눈썹</h3><div data-group="face"></div>
+        <details class="more"><summary>더 보기</summary><div data-group="face-more"></div></details></div>
+      <div class="card"><h3>팔</h3>
+        <p class="hint">팔 레이어가 좌우로 나뉘고 관절이 검출된 모델에서 움직입니다. 각도는 도, 손목 목표는 팔 길이 단위.</p>
+        <div data-group="arms"></div>
+        <details class="more"><summary>관절 없는 모델용</summary><div data-group="arms-simple"></div></details></div>
     </section>
-    <section class="sec" data-sec="obs"><h2>OBS連携</h2>
-      <p class="section-hint" id="obsStatus">start_obs.bat（obs_server.py）で開くと、このブラウザで開いたPSD・調整・表情がOBSへ自動で反映されます。</p>
-      <label class="check-row"><input type="checkbox" id="prefObsSync"> OBS表示へ同期する</label>
-      <div class="copy-row"><input type="text" id="obsUrl" readonly aria-label="OBSのブラウザソースURL"><button class="btn compact" type="button" id="btnCopyObsUrl">コピー</button></div>
-      <p class="section-hint">OBSの「ブラウザ」ソースに上のURLを設定します。幅・高さはPSDのサイズに合わせてください。</p>
+
+    <section class="pane" data-pane="tune" role="tabpanel" hidden>
+      <p class="pane-lead">캐릭터에 맞게 다듬는 값입니다. <b>캡슐 모델에 그대로 저장됩니다.</b></p>
+      <div class="card"><h3>눈</h3><div data-group="eyes"></div></div>
+      <div class="card"><h3>입</h3><div data-group="mouth"></div></div>
+      <div class="card"><h3>흔들림</h3><div data-group="physics"></div></div>
+      <p class="hint">슬라이더를 두 번 누르면 기본값으로 돌아갑니다.</p>
     </section>
-    <section class="sec" data-sec="export"><h2>書き出し</h2>
-      <div class="field-row"><label for="prefExportBg">背景</label><select id="prefExportBg"><option value="transparent">透過</option><option value="green">グリーンバック</option><option value="dark">ダーク</option></select></div>
-      <div class="field-row"><label for="prefRecSeconds">録画の長さ</label><select id="prefRecSeconds"><option value="3">3秒</option><option value="5">5秒</option><option value="10">10秒</option><option value="15">15秒</option><option value="30">30秒</option><option value="60">60秒</option></select></div>
-      <div class="field-row"><label for="prefRecFps">フレームレート</label><select id="prefRecFps"><option value="30">30fps</option><option value="60">60fps</option></select></div>
-      <div class="field-row"><label for="prefRecFormat">形式</label><select id="prefRecFormat"></select></div>
-      <div class="btns">
-        <button class="btn" type="button" id="btnPng2" data-model-action disabled>PNGを保存</button>
-        <button class="btn" type="button" id="btnRecord2" data-model-action disabled>録画を開始</button>
-        <button class="btn primary" type="button" id="btnExportBundle" data-model-action disabled title="rig.json + parts/*.png + reactions.json">캡슐 모델 내보내기</button>
-      </div>
-      <p class="section-hint" id="bundleStatus">캡슐 플레이어용 모델(rig.json · 파츠 PNG · reactions.json)을 ZIP으로 저장합니다. 앵커 · 파라미터 · 레이어 설정이 그대로 들어갑니다.</p>
-      <p class="section-hint" id="recordStatus">動画は元のPSDサイズで書き出します。透過はWebM（Chrome / Edge）で保持されます。</p>
+
+    <section class="pane" data-pane="layers" role="tabpanel" hidden>
+      <p class="pane-lead">위가 뒤, 아래가 앞입니다. 끌거나 ↑↓로 순서를 바꾸고, ▸에서 진하기·깊이를 바꿉니다.</p>
+      <button class="btn compact" type="button" id="btnResetLayers" data-model-action disabled>레이어 설정 처음으로</button>
+      <div id="layers"><p class="hint">PSD를 열면 표시됩니다</p></div>
     </section>
-    <section class="sec" data-sec="save"><h2>保存・設定</h2>
-      <div class="btns">
-        <button class="btn" type="button" id="btnSaveSettings" data-model-action disabled title="このブラウザに保存（Ctrl+S）">調整を保存</button>
-        <button class="btn" type="button" id="btnRestoreSettings" data-model-action disabled>保存状態に戻す</button>
-        <button class="btn" type="button" id="btnExportSettings" data-model-action disabled>設定JSONを書き出す</button>
-        <button class="btn" type="button" id="btnImportSettings" data-model-action disabled>設定JSONを読み込む</button>
-        <button class="btn" type="button" id="btnReset">数値リセット</button>
-        <button class="btn" type="button" id="btnSavePsd" data-model-action disabled>軽量PSDを保存</button>
-      </div>
-      <p class="section-hint">調整はこのブラウザにモデル別で保存。別の環境へはJSONで持ち出せます（JSONはプレビューにドロップしても読み込めます）。</p>
-      <input type="file" id="settingsInput" accept=".json,application/json" hidden>
-      <div id="utilStatus" role="status" aria-live="polite"></div>
-    </section>
-    <section class="sec" data-sec="background"><h2>背景</h2>
-      <div class="btns">
-        <button class="btn" type="button" data-bg="checker">透過</button>
-        <button class="btn" type="button" data-bg="green">GB</button>
-        <button class="btn" type="button" data-bg="dark">ダーク</button>
-      </div>
-    </section>
-    <section class="sec" data-sec="layers"><h2>レイヤー</h2><p class="section-hint">上が奥、下が手前。ドラッグか ↑↓ で並べ替え、▸ で濃さ・奥行きを調整します。</p><button class="btn compact" type="button" id="btnResetLayers" data-model-action disabled>レイヤー設定を初期化</button><div id="layers"><p class="section-hint">PSDの読み込み後に表示されます</p></div></section>
-    <section class="sec" data-sec="info"><h2>モデル情報・診断</h2><div id="rigInfo">モデル未読込</div><ul id="diagnostics"></ul></section>
-  </div>
+  </aside>
 </div>
-<div class="overlay-dialog" id="readmeOverlay" role="dialog" aria-modal="true" aria-labelledby="readmeTitle"><div class="dialog-win">
-  <div class="dialog-head"><b id="readmeTitle">使い方</b><button class="btn" type="button" id="readmeClose" aria-label="使い方を閉じる">✕</button></div>
-  <div class="dialog-body" id="readmeBody"></div>
+
+<div class="overlay-dialog" id="helpOverlay" role="dialog" aria-modal="true" aria-labelledby="helpTitle"><div class="dialog-win">
+  <div class="dialog-head"><b id="helpTitle">도움말</b><button class="btn" type="button" id="helpClose" aria-label="도움말 닫기">✕</button></div>
+  <div class="dialog-body">
+    <h2>순서</h2>
+    <ol>
+      <li><b>PSD 열기</b> — 파츠로 나뉜 PSD를 놓습니다. 그림만 있으면 시작 화면의 Colab 안내대로 PSD를 만듭니다.</li>
+      <li><b>점검</b> — 자동 리깅 결과를 보고, 눈·입·팔 관절이 어긋났으면 「기준점 맞추기」로 점을 옮깁니다.</li>
+      <li><b>움직여 보기</b> — 표정, 머리, 팔을 움직이거나 카메라로 따라 해 보며 이상한 곳을 찾습니다. 여기 값은 저장되지 않습니다.</li>
+      <li><b>모델 조정</b> — 눈을 감는 시점, 입 크기, 흔들림 세기처럼 캐릭터에 맞춘 값을 다듬습니다. 모델에 저장됩니다.</li>
+      <li><b>캡슐 모델 내보내기</b> — ZIP을 받아 <code>bundles/이름/</code>에 풀면 캡슐 플레이어에서 재생됩니다.</li>
+    </ol>
+    <h2>단축키</h2>
+    <table class="shortcut-table" id="shortcutTable"></table>
+    <h2>레이어 이름</h2>
+    <p>see-through가 만든 PSD는 그대로 됩니다. 직접 만든 PSD는 face, eyewhite, irides, eyelash, eyebrow, mouth_open, mouth_close, front hair, back hair, topwear, handwear 같은 이름(또는 일본어 「顔・白目・前髪」)을 쓰면 자동으로 인식합니다.</p>
+  </div>
 </div></div>
-<div class="overlay-dialog" id="shortcutOverlay" role="dialog" aria-modal="true" aria-labelledby="shortcutTitle"><div class="dialog-win narrow">
-  <div class="dialog-head"><b id="shortcutTitle">キーボードショートカット</b><button class="btn" type="button" id="shortcutClose" aria-label="ショートカットを閉じる">✕</button></div>
-  <div class="dialog-body"><table class="shortcut-table" id="shortcutTable"></table></div>
-</div></div>
+
 <script src="lib/ag-psd.min.js"></script>
 <script src="lib/rigger.js"></script>
 <script src="lib/genericparts.js"></script>
@@ -269,8 +221,6 @@
 <script src="lib/face-features.js"></script>
 <script src="lib/renderer.js"></script>
 <script src="lib/devices.js"></script>
-<script src="lib/recorder.js"></script>
-<script src="lib/obs-sync.js"></script>
 <script src="lib/seethrough.js"></script>
 <script src="lib/app.js"></script>
 </body>

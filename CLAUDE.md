@@ -4,12 +4,13 @@
 애니풍 캐릭터 그림 한 장 → 파츠 PSD(see-through) → 자동 리깅 → **캡슐(CAPSULE) 앱용 모델 묶음**을 만드는 개인용 로컬 도구. 배포하지 않는다.
 - **우선순위는 모델 품질**이다 (팔 움직임, 다양한 표정). 속도보다 품질.
 - 표정·모션 이름은 캡슐 백엔드의 이름과 맞출 필요 없음.
-- 사용자와의 대화는 한국어. 편집기 UI는 원본의 일본어가 대부분이고 새로 추가한 UI는 한국어.
+- 사용자와의 대화는 한국어. 편집기 UI도 전부 한국어(2026-11-13 캡슐용으로 개편). 필요한 기능만 둔다: OBS 송출·PNG 저장·녹화는 뺐고, 카메라 추적·마이크 립싱크는 남김.
 
 ## 구조
 | 경로 | 내용 |
 |---|---|
-| `index.html`, `lib/app.js` | 편집기 (원본 Anime2.5DRig). 변형 수식은 직접 갖지 않고 `engine/core.js`를 호출 |
+| `index.html`, `lib/app.js`, `lib/app.css` | 편집기. 탭 4개(점검 / 움직여 보기 / 모델 조정 / 레이어), 슬라이더는 `app.js`의 `SLIDERS` 표에서 생성. 조정값은 브라우저에 자동 저장. 변형 수식은 `engine/core.js` 호출 |
+| `serve.py` | `npm start` 로컬 정적 서버 (localhost 전용, 읽기 전용) |
 | `lib/rigger.js` | PSD → rig (레이어 이름 해석, 좌우 분리, 머리 가닥, 앵커). DOM 없음, Node 테스트 가능 |
 | `lib/psd-worker.js` | 브라우저에서 PSD 파싱 + 리깅 (Web Worker) |
 | `engine/core.js` | **변형 엔진 (편집기·플레이어 공용)**. 메시 생성, fadeAlpha, deform, updateSprings |
@@ -27,10 +28,10 @@
 
 ## 규칙
 - 엔진 수식을 바꾸면 `tests/equivalence.test.js`가 통과해야 한다. 원본 수식(`tests/fixtures/upstream-deform.js`, 고치지 말 것)과 비트 단위로 같은지 본다. 새 기능은 `Core.DEFAULTS`/`RANGES`에 넣고 **기본값에서는 원본과 같은 결과**가 나오게 하며 `Core.EXTENSIONS`에 등록한다.
-- 새 파라미터는 편집기 슬라이더(`index.html` + `lib/app.js`의 `P`, `sliders`)와 `engine/core.js`의 `DEFAULTS`/`RANGES`에 같이 넣는다. 포즈·표정용이면 `engine/bundle.js`의 `POSE_KEYS`에도 넣는다(묶음 settings에 구워지지 않게).
+- 새 파라미터는 `engine/core.js`의 `DEFAULTS`/`RANGES`와 편집기 `lib/app.js`의 `SLIDERS` 표에 같이 넣는다. 포즈·표정용이면 「움직여 보기」 그룹(head/face/arms…)에 두고 `engine/bundle.js`의 `POSE_KEYS`에도 넣는다(묶음 settings에 구워지지 않게). 캐릭터 조정값이면 「모델 조정」 그룹(eyes/mouth/physics).
 - `sample.psd`, `sample2.psd`는 원작자 그림이다. **커밋 금지** (`.gitignore`). 테스트용으로 로컬에만 둔다.
 - `LICENSE`의 원작자(hakoniwa) 줄은 지우지 않는다.
-- 내부 형식 이름(`anime25d-settings`, `anime25d-relay-v2`, localStorage `anime25d.*`)은 호환성 때문에 바꾸지 않는다.
+- 내부 형식 이름(`anime25d-settings`, localStorage `anime25d.*`, `window.Anime25D`)은 호환성 때문에 바꾸지 않는다.
 
 ## 명령
 ```bash
@@ -38,7 +39,7 @@ npm start                                   # http://127.0.0.1:8000/ (편집기)
 npm run test:node                           # 리거·엔진·묶음
 npm run test:python                         # 로컬 서버
 npm install --no-save playwright@1.49.1     # 브라우저 테스트용 (설치된 Chrome 사용)
-CHROME_CHANNEL=chrome npm run test:browser  # 편집기 회귀 (47개 + OBS + 얼굴 추적)
+CHROME_CHANNEL=chrome npm run test:browser  # 편집기 회귀 (가상 장치 51개 + 실제 PSD·기준점·얼굴 추적)
 CHROME_CHANNEL=chrome npm run test:player   # 플레이어 스모크 (npm start 실행 중, DEMO_URL로 ?bundles= 지정 가능)
 CHROME_CHANNEL=chrome npm run test:seethrough  # 시작 화면: 그림 → fake 변환 서버 → 리깅 (npm start 실행 중)
 python seethrough/server.py --mode fake --fake-psd sample2.psd --token ''   # GPU 없이 변환 흐름 시험

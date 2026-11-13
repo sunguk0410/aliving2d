@@ -5,7 +5,7 @@
  *
  *   node tools/build-bundle.js <input.psd> <outDir> [--reactions reactions.json] [--settings model.rig.json]
  *
- * --settings takes the editor's settings JSON ("設定JSONを書き出し") and applies its
+ * --settings takes the editor's settings JSON ("설정 파일 저장" in the check tab) and applies its
  * tuning parameters, anchor offsets and layer visibility / opacity / depth / order.
  * The editor's "Capsule bundle" export writes the same files directly.
  *
