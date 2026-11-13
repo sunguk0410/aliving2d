@@ -106,6 +106,13 @@ select{background:var(--field);border:1px solid #37303e;border-radius:6px;paddin
 #drop .st-state[data-state=ok]{color:#7fd49b}
 #drop .st-state[data-state=bad]{color:#ff8a8a}
 #drop .st-box .drop-hint{max-width:none;margin:0;line-height:1.7}
+#drop .st-title{margin:0;font-size:13px;color:#e8e2ee;font-weight:600}
+#drop .st-steps{margin:0;padding-left:20px;font-size:12.5px;line-height:1.9;color:#c0b9c8}
+#drop .st-steps b{color:#e8e2ee}
+.st-auto{border-top:1px solid var(--line);padding-top:8px;margin-top:4px;display:flex;flex-direction:column;gap:6px}
+.st-auto summary{cursor:pointer;font-size:12px;color:#928999}
+.st-auto[open]{gap:6px}
+.st-auto>*:not(summary){margin-top:6px}
 #drop .st-box a{color:var(--acc2)}
 #drop .st-box code{font-size:11px;color:#c0b9c8}
 .st-job{width:min(560px,100%);display:flex;flex-direction:column;gap:8px;text-align:left}

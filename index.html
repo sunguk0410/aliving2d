@@ -52,15 +52,23 @@
     <div id="drop">
       <div class="drop-symbol" aria-hidden="true">＋</div><p class="eyebrow">YOUR ART, IN MOTION</p>
       <h2>그림 한 장으로 캐릭터 모델을</h2>
-      <p>애니풍 캐릭터 그림(PNG·JPG)을 놓으면 see-through가 파츠 PSD로 나누고,<br>바로 리깅해서 움직입니다. 파츠 PSD가 이미 있으면 PSD를 놓아도 됩니다.</p>
+      <p>파츠로 나뉜 PSD를 놓으면 바로 리깅해서 움직입니다.</p>
       <div class="st-box" id="stBox">
-        <label for="stCode">see-through 변환 서버</label>
-        <div class="st-row">
-          <input type="text" id="stCode" placeholder="연결 코드 붙여넣기 (https://….trycloudflare.com#토큰)" autocomplete="off" spellcheck="false">
-          <button class="btn" type="button" id="stCheck">연결 확인</button>
-        </div>
-        <p class="st-state" id="stState" data-state="none">연결 안 됨</p>
-        <p class="drop-hint">서버가 없으면 <a href="seethrough/see_through_colab.ipynb" download>Colab 노트북</a>을 Colab에 올려 「모두 실행」하고, 마지막 셀의 연결 코드를 붙여넣으세요.<br>GPU 컴퓨터에서는 <code>python seethrough/server.py</code></p>
+        <p class="st-title">그림만 있으면: Colab에서 PSD로 바꾸기 (무료)</p>
+        <ol class="st-steps">
+          <li><a href="seethrough/see_through_colab.ipynb" download>Colab 노트북</a>을 받아 <a href="https://colab.research.google.com/" target="_blank" rel="noopener">Colab</a>에 올립니다 (파일 → 노트 업로드)</li>
+          <li>런타임 유형을 <b>T4 GPU</b>로 바꾸고 「모두 실행」 → 파일 선택 버튼에서 그림을 고릅니다</li>
+          <li>몇 분 뒤 PSD가 다운로드되면 <b>이 화면에 놓습니다</b></li>
+        </ol>
+        <details class="st-auto" id="stAuto">
+          <summary>자동 연결 (유료 Colab · GPU 컴퓨터)</summary>
+          <p class="drop-hint">변환 서버를 열면 그림을 여기에 바로 놓을 수 있습니다. 무료 Colab에서는 규정상 쓰지 마세요. GPU 컴퓨터에서는 <code>python seethrough/server.py</code></p>
+          <div class="st-row">
+            <input type="text" id="stCode" placeholder="연결 코드 (https://…#토큰)" autocomplete="off" spellcheck="false">
+            <button class="btn" type="button" id="stCheck">연결 확인</button>
+          </div>
+          <p class="st-state" id="stState" data-state="none">연결 안 됨</p>
+        </details>
       </div>
       <div class="st-job" id="stJob" hidden>
         <div class="st-job-head"><span id="stJobStage">준비 중</span><span id="stJobTime"></span></div>
@@ -69,8 +77,8 @@
         <button class="btn" type="button" id="stCancel">변환 중지</button>
       </div>
       <div class="btns drop-actions">
-        <button class="btn primary" type="button" id="btnImage">그림 선택</button>
-        <button class="btn" type="button" id="btnFile">PSDファイルを選ぶ</button>
+        <button class="btn primary" type="button" id="btnFile">PSDファイルを選ぶ</button>
+        <button class="btn" type="button" id="btnImage" hidden>그림 선택 (자동 연결)</button>
         <button class="btn" type="button" id="btnSavePsd" hidden>변환된 PSD 저장</button>
         <button class="btn" type="button" data-sample="A" title="sample2.psd を読み込む">サンプルAを読み込む</button>
         <button class="btn" type="button" data-sample="B" title="sample.psd を読み込む">サンプルBを読み込む</button>

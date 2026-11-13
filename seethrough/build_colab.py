@@ -29,31 +29,29 @@ def build():
     skip_re = '|'.join(SKIP)
     cells = [
         md('''
-# Capsule Model Studio — see-through 변환 서버 (Colab)
+# Capsule Model Studio — 그림 → 파츠 PSD (see-through, Colab)
 
-그림 한 장을 **파츠 PSD**로 나누는 [see-through](https://github.com/shitagaki-lab/see-through)(Apache-2.0)를 Colab GPU에서 돌리고,
-로컬 편집기(`npm start` → http://127.0.0.1:8000/)가 접속할 수 있게 임시 주소를 엽니다.
+그림 한 장을 **파츠 PSD**로 나누는 [see-through](https://github.com/shitagaki-lab/see-through)(Apache-2.0)를 Colab 무료 GPU에서 돌립니다.
 
-1. **런타임 → 런타임 유형 변경 → T4 GPU** (무료) 또는 L4/A100
-2. **런타임 → 모두 실행** (설치 5~10분, 첫 변환 때 가중치 수 GB 다운로드)
-3. 마지막 셀에 나오는 **연결 코드**(`https://….trycloudflare.com#토큰`)를 편집기 시작 화면에 붙여넣기
-4. 편집기에 그림을 넣으면 여기서 변환되고, 끝나면 PSD가 편집기로 돌아가 자동 리깅됩니다
+1. **런타임 → 런타임 유형 변경 → T4 GPU**
+2. **런타임 → 모두 실행** (설치 5~10분)
+3. ② 셀에 **파일 선택** 버튼이 나오면 그림(PNG/JPG)을 고릅니다. 첫 변환 때는 가중치(수 GB)를 받느라 더 걸립니다
+4. 끝나면 **PSD가 자동으로 다운로드**됩니다 → 편집기(`npm start` → http://127.0.0.1:8000/) 화면에 그 PSD를 놓으면 리깅됩니다
+5. 다른 그림은 ② 셀만 다시 실행 (▶)
 
-마지막 셀은 계속 실행 중이어야 합니다 (멈추면 연결이 끊김). 연결 코드는 실행할 때마다 바뀝니다.
+맨 아래 ③은 유료 Colab·GPU 컴퓨터용 자동 연결이라 기본으로 꺼져 있습니다.
 '''),
         code('''
 #@title 설정
 MODE = "auto"  #@param ["auto", "nf4", "offload", "full"]
 #@markdown auto: T4 같은 bf16 미지원·소형 GPU는 nf4(약 8GB), 12~20GB는 offload, 20GB 이상은 full
 RESOLUTION = 1280  #@param {type:"integer"}
-#@markdown 해상도를 1024로 낮추면 빠르고 메모리를 덜 씁니다
-TEST_RUN = True  #@param {type:"boolean"}
-#@markdown 서버를 열기 전에 예제 그림으로 한 번 변환해 봅니다 (가중치 다운로드 포함)
+#@markdown 1024로 낮추면 빠르고 메모리를 덜 씁니다
 ''', title=True),
         code('!nvidia-smi --query-gpu=name,memory.total,compute_cap --format=csv || echo "GPU가 없습니다: 런타임 유형을 GPU로 바꾸세요"'),
         code(f'''
-#@title see-through 설치
-import os, subprocess
+#@title ① see-through 설치
+import os
 REPO = "/content/see-through"
 if not os.path.isdir(REPO):
     !git clone -q {SEE_THROUGH_REPO} {{REPO}}
@@ -65,20 +63,60 @@ if not os.path.isdir(REPO):
 print("설치 완료")
 ''', title=True),
         code('''
-#@title 예제 그림으로 시험 변환 (TEST_RUN)
-import glob, time
-if TEST_RUN:
-    script = "inference/scripts/inference_psd_quantized.py" if MODE in ("auto", "nf4") else "inference/scripts/inference_psd.py"
-    extra = "--group_offload" if MODE == "offload" else ""
+#@title ② 그림 올리기 → PSD 받기 (다른 그림은 이 셀만 다시 실행)
+import glob, os, re, subprocess, time
+from google.colab import files
+
+def pick_mode():
+    out = subprocess.run(["nvidia-smi", "--query-gpu=memory.total,compute_cap", "--format=csv,noheader,nounits"],
+                         capture_output=True, text=True).stdout.split(",")
+    try:
+        vram, cc = float(out[0]), float(out[1])
+    except (ValueError, IndexError):
+        vram, cc = 0.0, 0.0
+    if MODE != "auto":
+        return MODE
+    if cc < 8 or vram < 12000:
+        return "nf4"
+    return "offload" if vram < 20000 else "full"
+
+mode = pick_mode()
+script = "inference/scripts/inference_psd_quantized.py" if mode == "nf4" else "inference/scripts/inference_psd.py"
+extra = "--group_offload" if mode == "offload" else ""
+print(f"모드: {mode} — 그림을 고르세요")
+uploaded = files.upload()
+for name, data in uploaded.items():
+    stem = re.sub(r"[^A-Za-z0-9_-]+", "_", os.path.splitext(name)[0]).strip("_") or "image"
+    job = f"/content/capsule_jobs/{time.strftime('%H%M%S')}_{stem}"
+    os.makedirs(job, exist_ok=True)
+    src = os.path.join(job, stem + os.path.splitext(name)[1].lower())
+    with open(src, "wb") as f:
+        f.write(data)
+    print(f"\\n{name}: 변환 시작 ({mode}, 해상도 {RESOLUTION})")
     t0 = time.time()
-    !python {script} --srcp assets/test_image.png --save_dir /content/st_test --save_to_psd --resolution {RESOLUTION} {extra}
-    psds = glob.glob("/content/st_test/*.psd")
-    print(f"{time.time() - t0:.0f}초", psds or "PSD가 만들어지지 않았습니다 — 위 로그를 확인하세요")
+    !cd {REPO} && python {script} --srcp {src} --save_dir {job}/out --save_to_psd --resolution {RESOLUTION} {extra}
+    psds = [p for p in glob.glob(f"{job}/out/*.psd") if not p.endswith("_depth.psd")]
+    if not psds:
+        print("실패: PSD가 만들어지지 않았습니다 — 위 로그를 확인하세요")
+        continue
+    print(f"완료 ({time.time() - t0:.0f}초) → {os.path.basename(psds[0])} 다운로드. 편집기 화면에 놓으세요")
+    files.download(psds[0])
 ''', title=True),
+        md('''
+## ③ (선택) 자동 연결 — 유료 Colab · GPU 컴퓨터용
+
+편집기에 그림을 넣으면 여기로 보내 변환하고 PSD를 바로 돌려받는 방식입니다. 임시 주소(터널)로 노트북 밖에서 접속하기 때문에
+**무료 Colab에서는 규정상 금지**("bypassing the notebook UI to interact primarily via a web UI")라 기본으로 꺼 두었습니다.
+컴퓨트 단위가 있는 유료 등급에서만 `USE_SERVER`를 켜세요. GPU 컴퓨터에서는 저장소의 `python seethrough/server.py`를 쓰면 됩니다.
+'''),
         code('%%writefile /content/capsule_seethrough_server.py\n' + server),
         code('''
-#@title 서버 열기 — 아래 "연결 코드"를 편집기에 붙여넣기 (이 셀은 계속 실행 상태로 둡니다)
-!python /content/capsule_seethrough_server.py --repo {REPO} --mode {MODE} --resolution {RESOLUTION} --workdir /content/capsule_jobs --tunnel
+#@title 서버 열기 (USE_SERVER를 켠 경우만) — 나오는 "연결 코드"를 편집기에 붙여넣기
+USE_SERVER = False  #@param {type:"boolean"}
+if USE_SERVER:
+    !python /content/capsule_seethrough_server.py --repo {REPO} --mode {MODE} --resolution {RESOLUTION} --workdir /content/capsule_server_jobs --tunnel
+else:
+    print("자동 연결은 꺼져 있습니다 (무료 Colab에서는 ② 셀을 쓰세요)")
 ''', title=True),
     ]
     nb = {'cells': cells, 'metadata': {'accelerator': 'GPU', 'colab': {'provenance': [], 'gpuType': 'T4'},

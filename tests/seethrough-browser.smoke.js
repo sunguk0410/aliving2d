@@ -37,14 +37,18 @@ const TOKEN = 'smoke' + Date.now().toString(36);
     const png = path.join(work, 'character.png');
     fs.writeFileSync(png, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
 
-    // no connection code -> asks for one, does not upload
+    // no connection code -> explains the Colab notebook flow, does not upload
+    assert.strictEqual(await page.isVisible('#btnImage'), false, 'image button only with a server');
     await page.setInputFiles('#fileInput', png);
-    await page.waitForFunction(() => document.getElementById('stState').dataset.state === 'bad');
+    await page.waitForFunction(() => /Colab/.test(document.getElementById('dropStatus').textContent));
+    assert.strictEqual(await page.isVisible('#stJob'), false);
+    await page.click('#stAuto summary');
 
     await page.fill('#stCode', `http://127.0.0.1:${PORT}#${TOKEN}`);
     await page.dispatchEvent('#stCode', 'change');
     await page.waitForFunction(() => document.getElementById('stState').dataset.state === 'ok', null, { timeout: 10000 });
     assert.match(await page.textContent('#stState'), /fake/);
+    assert.strictEqual(await page.isVisible('#btnImage'), true, 'image button once connected');
 
     await page.setInputFiles('#fileInput', png);
     await page.waitForSelector('#stJob:not([hidden])');
