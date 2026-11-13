@@ -41,7 +41,7 @@ const stats = Rigger.cleanPsdLayers(psd);
 assert.strictEqual(stats.layers, 7);
 assert.throws(
   () => Rigger.buildRig({ width: 6000, height: 5000, children: [] }),
-  /大きすぎ/
+  /너무 큽니다/
 );
 
 // Empty semantic layers must fall back to usable anchors, not dereference null.
@@ -49,13 +49,13 @@ const emptyFace = solidLayer('face', 0, 0, 20, 20);
 emptyFace.imageData.data.fill(0);
 const fallback = Rigger.buildRig({width:100,height:100,children:[emptyFace,solidLayer('mouth_open',35,55,30,12)]});
 assert.ok(Number.isFinite(fallback.anchors.face.cx));
-assert.ok(fallback.warnings.some(w=>w.includes('空のレイヤー')));
+assert.ok(fallback.warnings.some(w=>w.includes('빈 레이어')));
 for(const name of ['__proto__','constructor','toString','<img src=x onerror=alert(1)>']) {
   const unusual=Rigger.buildRig({width:100,height:100,children:[solidLayer(name,10,10,40,40)]});
   assert.ok(Number.isFinite(unusual.layers[0].depth),name);
 }
-assert.throws(()=>Rigger.buildRig({width:100,height:100,children:[emptyFace]}),/画素/);
-assert.throws(()=>Rigger.validatePsd({width:2.5,height:100,children:[]}),/サイズ/);
+assert.throws(()=>Rigger.buildRig({width:100,height:100,children:[emptyFace]}),/픽셀/);
+assert.throws(()=>Rigger.validatePsd({width:2.5,height:100,children:[]}),/크기/);
 
 const custom = solidLayer('generic',0,0,30,8).imageData;
 const partial=structuredClone(psd);
@@ -107,6 +107,6 @@ assert.ok(ear.every(l => l.phys === 'sway' && l.strands.length >= 1));
 assert.strictEqual(accRig.layers.find(l => l.name === 'tail').phys, 'sway');
 const mystery = accRig.layers.find(l => l.name === 'mystery');
 assert.ok(mystery.unknown && mystery.group === 'body');
-assert.strictEqual(Rigger.roleLabel('front hair'), '前髪');
+assert.strictEqual(Rigger.roleLabel('front hair'), '앞머리');
 
 console.log('rigger tests: 20 scenarios passed');

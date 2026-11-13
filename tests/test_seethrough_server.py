@@ -114,8 +114,10 @@ class SeeThroughServerTests(unittest.TestCase):
         conv.args = argparse.Namespace(python='py', repo='/r', resolution=1024)
         job = argparse.Namespace(input='/j/a.png')
         conv.mode = 'nf4'
-        self.assertEqual(conv.command(job, '/j/out'), ['py', os.path.join('/r', 'inference/scripts/inference_psd_quantized.py'),
+        self.assertEqual(conv.command(job, '/j/out'), ['py', os.path.join('/r', 'inference/scripts/inference_psd_quantized.py'), '--no_group_offload',
                                                        '--srcp', '/j/a.png', '--save_dir', '/j/out', '--save_to_psd', '--resolution', '1024'])
+        self.assertEqual(conv.attempts(), 3)
+        self.assertIn('--cpu_offload', conv.command(job, '/j/out', 1))
         conv.mode = 'offload'
         self.assertIn('--group_offload', conv.command(job, '/j/out'))
 

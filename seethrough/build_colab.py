@@ -81,23 +81,45 @@ def pick_mode():
     return "offload" if vram < 20000 else "full"
 
 mode = pick_mode()
-script = "inference/scripts/inference_psd_quantized.py" if mode == "nf4" else "inference/scripts/inference_psd.py"
-extra = "--group_offload" if mode == "offload" else ""
+# T4 + NF4: group offload (the script's default) failed with CUBLAS_STATUS_ALLOC_FAILED,
+# so try plain GPU first, then CPU offload. Each attempt is a fresh process.
+if mode == "nf4":
+    script = "inference/scripts/inference_psd_quantized.py"
+    attempts = [("GPU", "--no_group_offload"), ("CPU 오프로드", "--no_group_offload --cpu_offload"), ("그룹 오프로드", "")]
+else:
+    script = "inference/scripts/inference_psd.py"
+    attempts = [(mode, "--group_offload" if mode == "offload" else "")]
+MAX_SIDE = 2048   # see-through works at 1280 anyway; huge PNGs only cost memory
+
 print(f"모드: {mode} — 그림을 고르세요")
 uploaded = files.upload()
 for name, data in uploaded.items():
     stem = re.sub(r"[^A-Za-z0-9_-]+", "_", os.path.splitext(name)[0]).strip("_") or "image"
     job = f"/content/capsule_jobs/{time.strftime('%H%M%S')}_{stem}"
     os.makedirs(job, exist_ok=True)
-    src = os.path.join(job, stem + os.path.splitext(name)[1].lower())
-    with open(src, "wb") as f:
-        f.write(data)
-    print(f"\\n{name}: 변환 시작 ({mode}, 해상도 {RESOLUTION})")
+    src = os.path.join(job, stem + ".png")
+    from PIL import Image
+    import io
+    img = Image.open(io.BytesIO(data))
+    img = img.convert("RGBA") if img.mode in ("RGBA", "LA", "P") else img.convert("RGB")
+    if max(img.size) > MAX_SIDE:
+        k = MAX_SIDE / max(img.size)
+        print(f"{name}: {img.size[0]}x{img.size[1]} → 긴 변 {MAX_SIDE}px로 줄임")
+        img = img.resize((round(img.size[0] * k), round(img.size[1] * k)), Image.LANCZOS)
+    img.save(src)
+    del img, data
     t0 = time.time()
-    !cd {REPO} && python {script} --srcp {src} --save_dir {job}/out --save_to_psd --resolution {RESOLUTION} {extra}
-    psds = [p for p in glob.glob(f"{job}/out/*.psd") if not p.endswith("_depth.psd")]
+    psds = []
+    for label, extra in attempts:
+        print(f"\\n{name}: 변환 시작 ({mode} · {label}, 해상도 {RESOLUTION})")
+        !rm -rf {job}/out
+        !cd {REPO} && python {script} --srcp {src} --save_dir {job}/out --save_to_psd --resolution {RESOLUTION} {extra}
+        psds = [p for p in glob.glob(f"{job}/out/*.psd") if not p.endswith("_depth.psd")]
+        if psds:
+            break
+        print(f"→ {label} 방식 실패, 다음 방식으로 다시 시도합니다")
     if not psds:
-        print("실패: PSD가 만들어지지 않았습니다 — 위 로그를 확인하세요")
+        print("실패: 모든 방식에서 PSD가 만들어지지 않았습니다 — 위 로그를 복사해 알려 주세요")
         continue
     print(f"완료 ({time.time() - t0:.0f}초) → {os.path.basename(psds[0])} 다운로드. 편집기 화면에 놓으세요")
     files.download(psds[0])

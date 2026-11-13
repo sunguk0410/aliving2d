@@ -194,10 +194,17 @@ class Converter:
                 job.finished = time.time()
                 print(f'[job {job.id}] {job.status} in {job.finished - job.started:.0f}s' + (f': {job.error}' if job.error else ''), flush=True)
 
-    def command(self, job, out):
+    # NF4 on a T4: the script's default group offload failed with CUBLAS_STATUS_ALLOC_FAILED,
+    # so try plain GPU first, then CPU offload, then the script default.
+    NF4_ATTEMPTS = [['--no_group_offload'], ['--no_group_offload', '--cpu_offload'], []]
+
+    def attempts(self):
+        return len(self.NF4_ATTEMPTS) if self.mode == 'nf4' else 1
+
+    def command(self, job, out, attempt=0):
         a, repo = self.args, self.args.repo
         if self.mode == 'nf4':
-            cmd = [a.python, os.path.join(repo, 'inference/scripts/inference_psd_quantized.py')]
+            cmd = [a.python, os.path.join(repo, 'inference/scripts/inference_psd_quantized.py')] + self.NF4_ATTEMPTS[attempt]
         else:
             cmd = [a.python, os.path.join(repo, 'inference/scripts/inference_psd.py')]
             if self.mode == 'offload':
@@ -211,15 +218,23 @@ class Converter:
         out = os.path.join(job.dir, 'out')
         if self.mode == 'fake':
             return self._fake(job, out)
-        cmd = self.command(job, out)
-        job.log.append('$ ' + ' '.join(os.path.relpath(c, self.args.repo) if os.path.isabs(c) and c.startswith(self.args.repo) else c for c in cmd[1:]))
         env = dict(os.environ, PYTHONUNBUFFERED='1')
-        job.proc = subprocess.Popen(cmd, cwd=self.args.repo, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        self._pump(job, job.proc.stdout)
-        code = job.proc.wait()
-        if code != 0:
-            raise RuntimeError(job.error or f'see-through가 실패했습니다 (exit {code}). 로그를 확인하세요')
-        self._collect(job, out)
+        for attempt in range(self.attempts()):
+            if job.error:
+                raise RuntimeError(job.error)
+            shutil.rmtree(out, ignore_errors=True)
+            cmd = self.command(job, out, attempt)
+            job.log.append('$ ' + ' '.join(os.path.relpath(c, self.args.repo) if os.path.isabs(c) and c.startswith(self.args.repo) else c for c in cmd[1:]))
+            job.percent, job.step = 0, 0
+            job.proc = subprocess.Popen(cmd, cwd=self.args.repo, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            self._pump(job, job.proc.stdout)
+            code = job.proc.wait()
+            if code == 0:
+                return self._collect(job, out)
+            if job.error:
+                raise RuntimeError(job.error)
+            job.log.append(f'(exit {code}) 다른 방식으로 다시 시도' if attempt + 1 < self.attempts() else f'(exit {code})')
+        raise RuntimeError('see-through가 실패했습니다. 로그를 확인하세요')
 
     def _pump(self, job, stream):
         """Read tqdm-style output (\\r updates) and keep percent + last lines."""
