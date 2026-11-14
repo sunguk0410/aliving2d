@@ -24,6 +24,8 @@
   const POSE_KEYS = ['angleX', 'angleY', 'angleZ', 'body', 'eyeOpenL', 'eyeOpenR', 'eyeX', 'eyeY',
     'brow', 'browAngL', 'browAngR', 'browAngSym', 'mouthOpen', 'mouthForm', 'mouthCForm',
     'bangL', 'bangC', 'bangR', 'armY', 'armPos',
+    'eyeSmile', 'mouthWide', 'mouthTri', 'cheekPuff', 'fxBlush', 'fxSweat', 'fxTears', 'fxAnger', 'fxGloom',
+    'poseTyping', 'poseWriting', 'poseWave', 'poseSwing',
     'armLShoulder', 'armLElbow', 'armRShoulder', 'armRElbow', 'armLX', 'armLY', 'armRX', 'armRY'];
 
   /** Tuning values that differ from the engine defaults (rig.json "settings"). */
@@ -64,6 +66,9 @@
       if (s.visible === false) out.visible = false;
       if (L.unknown) out.unknown = true;
       if (L.synthetic) out.synthetic = true;
+      if (L.fx) out.fx = L.fx;
+      if (L.pose) out.pose = L.pose;
+      if (L.lashSquash != null) out.lashSquash = L.lashSquash;
       return out;
     });
     return {

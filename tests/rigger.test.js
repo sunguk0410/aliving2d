@@ -52,7 +52,7 @@ assert.ok(Number.isFinite(fallback.anchors.face.cx));
 assert.ok(fallback.warnings.some(w=>w.includes('빈 레이어')));
 for(const name of ['__proto__','constructor','toString','<img src=x onerror=alert(1)>']) {
   const unusual=Rigger.buildRig({width:100,height:100,children:[solidLayer(name,10,10,40,40)]});
-  assert.ok(Number.isFinite(unusual.layers[0].depth),name);
+  assert.ok(Number.isFinite(unusual.layers.find(l=>!l.fx).depth),name);
 }
 assert.throws(()=>Rigger.buildRig({width:100,height:100,children:[emptyFace]}),/픽셀/);
 assert.throws(()=>Rigger.validatePsd({width:2.5,height:100,children:[]}),/크기/);
@@ -92,9 +92,28 @@ for (const [raw, expected] of Object.entries(aliasCases)) assert.strictEqual(Rig
 const hairRig = Rigger.buildRig({ width: 200, height: 200, children: [
   solidLayer('hair', 40, 10, 120, 170), solidLayer('face', 60, 30, 80, 90), solidLayer('hair', 50, 20, 100, 40)
 ] });
-assert.deepStrictEqual(hairRig.layers.map(l => l.name), ['back hair', 'face', 'front hair']);
-assert.ok(hairRig.layers[2].strands.length > 0, 'front hair gets strands');
-assert.strictEqual(hairRig.layers[1].source, 'face');
+assert.deepStrictEqual(hairRig.layers.filter(l => !l.fx).map(l => l.name), ['back hair', 'face', 'front hair']);
+assert.ok(hairRig.layers.find(l => l.name === 'front hair').strands.length > 0, 'front hair gets strands');
+assert.strictEqual(hairRig.layers.find(l => l.name === 'face').source, 'face');
+
+// Effect layers: drawn from the anchors when the PSD has none, hidden at rest, painted ones win.
+{
+  const fxNames = hairRig.layers.filter(l => l.fx).map(l => l.name);
+  assert.deepStrictEqual(fxNames.slice().sort(), ['fx_anger', 'fx_blush', 'fx_gloom', 'fx_sweat', 'fx_tears']);
+  const names = hairRig.layers.map(l => l.name);
+  assert.ok(names.indexOf('fx_blush') > names.indexOf('face') && names.indexOf('fx_blush') < names.indexOf('front hair'), 'blush sits above the face, under the hair');
+  for (const l of hairRig.layers.filter(l => l.fx)) {
+    assert.ok(l.fade === 'fx' && l.synthetic && l.img.data.length === l.w * l.h * 4 && l.w > 1 && l.h > 1, l.name);
+    assert.ok([...l.img.data].some((v, i) => i % 4 === 3 && v > 128), l.name + ' has visible pixels');
+  }
+  const painted = Rigger.buildRig({ width: 200, height: 200, children: [solidLayer('face', 60, 30, 80, 90), solidLayer('汗', 150, 40, 10, 20)] });
+  const sweat = painted.layers.filter(l => l.fx === 'fxSweat');
+  assert.ok(sweat.length === 1 && !sweat[0].synthetic && sweat[0].source === '汗', 'a painted sweat layer replaces the generated one');
+  assert.strictEqual(Rigger.buildRig({ width: 200, height: 200, children: [solidLayer('face', 60, 30, 80, 90)] }, { fx: false }).layers.some(l => l.fx), false);
+  assert.strictEqual(Rigger.normName('handwear-l'), 'handwear');
+  assert.strictEqual(Rigger.normName('irides-r'), 'irides');
+  assert.strictEqual(Rigger.normName('눈물'), 'fx_tears');
+}
 
 // Earrings and tails swing; unknown names are reported but still follow a group.
 const accRig = Rigger.buildRig({ width: 300, height: 300, children: [
@@ -109,4 +128,16 @@ const mystery = accRig.layers.find(l => l.name === 'mystery');
 assert.ok(mystery.unknown && mystery.group === 'body');
 assert.strictEqual(Rigger.roleLabel('front hair'), '앞머리');
 
-console.log('rigger tests: 20 scenarios passed');
+// see-through on a tilted face can stack the eye white over the iris: the rigger restores white -> iris -> lashes
+{
+  const kids = [solidLayer('face', 40, 30, 120, 140), solidLayer('irides', 60, 80, 20, 12), solidLayer('irides', 120, 80, 20, 12),
+    solidLayer('eyelash', 55, 75, 30, 10), solidLayer('eyelash', 115, 75, 30, 10), solidLayer('eyewhite', 58, 78, 24, 14), solidLayer('eyewhite', 118, 78, 24, 14),
+    solidLayer('front hair', 40, 20, 120, 40)];
+  const r = Rigger.buildRig({ width: 200, height: 200, children: kids }, { fx: false });
+  const names = r.layers.map(l => l.name);
+  const at = n => names.indexOf(n);
+  assert.ok(at('eyewhite_l') < at('irides_l') && at('irides_l') < at('eyelash_l') && at('eyewhite_r') < at('irides_r'), names.join(','));
+  assert.ok(at('front hair') > at('eyelash_r') && at('face') < at('eyewhite_l'), 'other layers keep their places');
+  assert.ok(r.warnings.some(w => w.includes('눈 파츠 순서')));
+}
+console.log('rigger tests: 22 scenarios passed');

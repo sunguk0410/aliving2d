@@ -1,116 +1,412 @@
 {
   "format": "capsule-reactions",
   "version": 1,
-  "_comment": "expressions = held poses (absolute parameter targets). motions = one-shot keyframe tracks [ms, value, ease?]; mode add = offset on top of idle, override = replace. reactions = Capsule trigger_type -> candidates (intensity 1 눈치 / 2 말 걸기 / 3 서운함, weight = random pick weight).",
-
+  "_comment": "expressions = held poses (absolute parameter targets). motions = one-shot keyframe tracks [ms, value, ease?]; mode add = offset on top of idle, override = replace. reactions = Capsule trigger_type -> candidates (intensity 1 눈치 / 2 말 걸기 / 3 서운함, weight = random pick weight). label = name shown in the editor.",
   "expressions": {
-    "neutral":  { "params": {} },
-    "smile":    { "params": { "eyeOpenL": 0, "eyeOpenR": 0, "brow": 0.45, "mouthForm": 0.9, "mouthCForm": 0.5 } },
-    "softSmile":{ "params": { "eyeOpenL": 0.7, "eyeOpenR": 0.7, "brow": 0.25, "mouthForm": 0.7 } },
-    "surprise": { "params": { "brow": 1, "mouthOpen": 0.6, "mouthForm": -0.1, "irisScale": 0.75 } },
-    "stare":    { "params": { "eyeOpenL": 0.45, "eyeOpenR": 0.45, "brow": -0.6, "mouthForm": -0.4, "mouthCForm": -0.3 } },
-    "pout":     { "params": { "eyeOpenL": 0.7, "eyeOpenR": 0.7, "brow": -0.45, "browAngSym": -0.5, "mouthForm": -0.8, "mouthCForm": -1, "mouthCY": 0.15 } },
-    "worried":  { "params": { "eyeOpenL": 0.85, "eyeOpenR": 0.85, "brow": 0.3, "browAngSym": 0.6, "mouthForm": -0.3, "mouthCForm": -0.45 } },
-    "sleepy":   { "params": { "eyeOpenL": 0.35, "eyeOpenR": 0.35, "brow": -0.1, "mouthForm": 0 } }
+    "neutral": {
+      "params": {},
+      "label": "기본"
+    },
+    "smile": {
+      "params": { "eyeOpenL": 0, "eyeOpenR": 0, "eyeSmile": 1, "brow": 0.45, "mouthForm": 0.9, "mouthCForm": 0.6 },
+      "label": "웃음"
+    },
+    "grin": {
+      "params": {
+        "eyeOpenL": 0,
+        "eyeOpenR": 0,
+        "eyeSmile": 1,
+        "brow": 0.5,
+        "mouthOpen": 0.85,
+        "mouthForm": 1,
+        "mouthWide": 0.35,
+        "fxBlush": 0.35
+      },
+      "label": "활짝"
+    },
+    "softSmile": {
+      "params": { "eyeOpenL": 0.8, "eyeOpenR": 0.8, "eyeSmile": 0.55, "brow": 0.25, "mouthForm": 0.7, "mouthCForm": 0.55 },
+      "label": "미소"
+    },
+    "shy": {
+      "params": {
+        "eyeOpenL": 0.7,
+        "eyeOpenR": 0.7,
+        "eyeSmile": 0.35,
+        "eyeY": -0.45,
+        "eyeX": 0.3,
+        "brow": 0.2,
+        "browAngSym": -0.4,
+        "mouthCForm": 0.25,
+        "mouthWide": -0.35,
+        "fxBlush": 1
+      },
+      "label": "부끄럼"
+    },
+    "surprise": {
+      "params": { "brow": 1, "mouthOpen": 0.65, "mouthForm": -0.1, "mouthWide": -0.75, "irisScale": 0.75 },
+      "label": "놀람"
+    },
+    "shock": {
+      "params": {
+        "brow": 1,
+        "browAngSym": -0.5,
+        "irisScale": 0.6,
+        "mouthOpen": 0.8,
+        "mouthTri": 0.6,
+        "mouthForm": -0.5,
+        "fxSweat": 1,
+        "mouthWide": -0.5
+      },
+      "label": "충격"
+    },
+    "stare": {
+      "params": { "eyeOpenL": 0.45, "eyeOpenR": 0.45, "brow": -0.6, "mouthForm": -0.4, "mouthCForm": -0.3 },
+      "label": "째려보기"
+    },
+    "pout": {
+      "params": {
+        "eyeOpenL": 0.7,
+        "eyeOpenR": 0.7,
+        "brow": -0.45,
+        "browAngSym": 0.5,
+        "mouthForm": -0.8,
+        "mouthCForm": -1,
+        "mouthCY": 0.15,
+        "mouthWide": -0.3,
+        "cheekPuff": 1,
+        "fxBlush": 0.3
+      },
+      "label": "삐짐"
+    },
+    "angry": {
+      "params": {
+        "eyeOpenL": 0.8,
+        "eyeOpenR": 0.8,
+        "brow": -0.8,
+        "browAngSym": 0.9,
+        "mouthOpen": 0.4,
+        "mouthForm": -0.7,
+        "mouthTri": -0.6,
+        "fxAnger": 1
+      },
+      "label": "화남"
+    },
+    "contempt": {
+      "params": {
+        "eyeOpenL": 0.55,
+        "eyeOpenR": 0.55,
+        "eyeY": 0.15,
+        "brow": -0.35,
+        "browAngSym": 0.35,
+        "mouthCForm": -0.35,
+        "mouthWide": -0.15,
+        "angleY": 0.12
+      },
+      "label": "경멸"
+    },
+    "sad": {
+      "params": {
+        "eyeOpenL": 0.6,
+        "eyeOpenR": 0.6,
+        "eyeY": -0.3,
+        "brow": 0.2,
+        "browAngSym": -0.8,
+        "mouthCForm": -0.6,
+        "mouthForm": -0.5
+      },
+      "label": "슬픔"
+    },
+    "cry": {
+      "params": {
+        "eyeOpenL": 0.35,
+        "eyeOpenR": 0.35,
+        "eyeSmile": 0.5,
+        "brow": 0.3,
+        "browAngSym": -1,
+        "mouthOpen": 0.5,
+        "mouthForm": -0.8,
+        "mouthTri": 0.4,
+        "fxTears": 1
+      },
+      "label": "울음"
+    },
+    "worried": {
+      "params": {
+        "eyeOpenL": 0.85,
+        "eyeOpenR": 0.85,
+        "brow": 0.3,
+        "browAngSym": -0.6,
+        "mouthForm": -0.3,
+        "mouthCForm": -0.45,
+        "fxSweat": 0.7
+      },
+      "label": "걱정"
+    },
+    "gloomy": {
+      "params": {
+        "eyeOpenL": 0.55,
+        "eyeOpenR": 0.55,
+        "eyeY": -0.4,
+        "brow": 0.1,
+        "browAngSym": -0.6,
+        "mouthCForm": -0.5,
+        "fxGloom": 1
+      },
+      "label": "시무룩"
+    },
+    "sleepy": {
+      "params": { "eyeOpenL": 0.35, "eyeOpenR": 0.35, "brow": -0.1, "mouthForm": 0 },
+      "label": "졸림"
+    },
+    "yawn": {
+      "params": {
+        "eyeOpenL": 0,
+        "eyeOpenR": 0,
+        "brow": 0.25,
+        "browAngSym": -0.3,
+        "mouthOpen": 1,
+        "mouthWide": -0.8,
+        "fxTears": 0.35,
+        "angleY": 0.25
+      },
+      "label": "하품"
+    },
+    "thinking": {
+      "params": { "eyeX": 0.5, "eyeY": 0.45, "browAngL": 0.3, "browAngR": -0.1, "mouthCForm": -0.2, "mouthWide": -0.3 },
+      "label": "생각"
+    },
+    "focus": {
+      "params": {
+        "eyeOpenL": 0.85,
+        "eyeOpenR": 0.85,
+        "eyeY": -0.15,
+        "brow": -0.25,
+        "browAngSym": 0.3,
+        "mouthCForm": -0.1,
+        "mouthWide": -0.2
+      },
+      "label": "집중"
+    },
+    "typing": {
+      "params": {
+        "poseTyping": 1,
+        "eyeOpenL": 0.85,
+        "eyeOpenR": 0.85,
+        "eyeY": -0.45,
+        "angleY": -0.18,
+        "brow": -0.15,
+        "mouthCForm": -0.05
+      },
+      "label": "키보드 치기"
+    },
+    "writing": {
+      "params": {
+        "poseWriting": 1,
+        "eyeOpenL": 0.8,
+        "eyeOpenR": 0.8,
+        "eyeY": -0.6,
+        "angleY": -0.3,
+        "brow": -0.2,
+        "mouthCForm": -0.05
+      },
+      "label": "필기"
+    },
+    "winkL": {
+      "params": { "eyeOpenL": 0, "eyeOpenR": 1, "eyeSmile": 0.6, "brow": 0.2, "mouthOpen": 0.4, "mouthForm": 0.7 },
+      "label": "윙크 (왼쪽)"
+    },
+    "winkR": {
+      "params": { "eyeOpenL": 1, "eyeOpenR": 0, "eyeSmile": 0.6, "brow": 0.2, "mouthOpen": 0.4, "mouthForm": 0.7 },
+      "label": "윙크 (오른쪽)"
+    }
   },
-
   "motions": {
     "nod": {
-      "duration": 900, "fadeIn": 120, "fadeOut": 200, "mode": "add",
+      "label": "끄덕",
+      "duration": 900,
+      "fadeIn": 120,
+      "fadeOut": 200,
+      "mode": "add",
       "tracks": {
         "angleY": [[0, 0], [220, -0.45, "easeOut"], [480, 0.12, "easeInOut"], [900, 0, "easeInOut"]],
         "angleZ": [[0, 0], [300, 0.08], [900, 0]]
       }
     },
     "doubleNod": {
-      "duration": 1400, "fadeIn": 100, "fadeOut": 200, "mode": "add",
+      "label": "두 번 끄덕",
+      "duration": 1400,
+      "fadeIn": 100,
+      "fadeOut": 200,
+      "mode": "add",
       "tracks": {
         "angleY": [[0, 0], [200, -0.4, "easeOut"], [420, 0.05], [640, -0.4, "easeOut"], [900, 0.05], [1400, 0, "easeInOut"]]
       }
     },
     "glanceAtUser": {
-      "duration": 1600, "fadeIn": 150, "fadeOut": 350, "mode": "override",
+      "label": "쳐다보기",
+      "duration": 1600,
+      "fadeIn": 150,
+      "fadeOut": 350,
+      "mode": "override",
       "tracks": {
         "angleX": [[0, 0], [1600, 0]],
         "angleY": [[0, 0.1], [1600, 0.1]],
-        "eyeX":   [[0, 0], [1600, 0]],
-        "eyeY":   [[0, 0], [1600, 0]]
+        "eyeX": [[0, 0], [1600, 0]],
+        "eyeY": [[0, 0], [1600, 0]]
       }
     },
     "tiltAndTalk": {
-      "duration": 2200, "fadeIn": 200, "fadeOut": 400, "mode": "add",
+      "label": "갸웃하며 말하기",
+      "duration": 2200,
+      "fadeIn": 200,
+      "fadeOut": 400,
+      "mode": "add",
       "tracks": {
         "angleZ": [[0, 0], [350, 0.5, "easeOut"], [1900, 0.45], [2200, 0, "easeInOut"]],
         "angleX": [[0, 0], [350, 0.2, "easeOut"], [2200, 0]],
-        "brow":   [[0, 0], [300, 0.3], [2000, 0.3], [2200, 0]]
+        "brow": [[0, 0], [300, 0.3], [2000, 0.3], [2200, 0]]
       },
-      "events": [{ "t": 300, "talk": 1500 }]
+      "events": [
+        { "t": 300, "talk": 1500 }
+      ]
     },
     "lookDownSulk": {
-      "duration": 2600, "fadeIn": 300, "fadeOut": 500, "mode": "add",
+      "label": "고개 숙이고 삐짐",
+      "duration": 2600,
+      "fadeIn": 300,
+      "fadeOut": 500,
+      "mode": "add",
       "tracks": {
         "angleY": [[0, 0], [600, -0.35, "easeOut"], [2200, -0.3], [2600, 0, "easeInOut"]],
         "angleX": [[0, 0], [600, -0.35, "easeOut"], [2200, -0.3], [2600, 0, "easeInOut"]],
-        "eyeX":   [[0, 0], [600, -0.6], [2200, -0.6], [2600, 0]]
+        "eyeX": [[0, 0], [600, -0.6], [2200, -0.6], [2600, 0]]
       }
     },
     "lookAround": {
-      "duration": 3200, "fadeIn": 200, "fadeOut": 400, "mode": "add",
+      "label": "두리번",
+      "duration": 3200,
+      "fadeIn": 200,
+      "fadeOut": 400,
+      "mode": "add",
       "tracks": {
         "angleX": [[0, 0], [700, -0.6, "easeInOut"], [1500, -0.6], [2300, 0.6, "easeInOut"], [2800, 0.6], [3200, 0, "easeInOut"]],
-        "eyeX":   [[0, 0], [600, -0.9, "easeInOut"], [1500, -0.9], [2200, 0.9, "easeInOut"], [2800, 0.9], [3200, 0, "easeInOut"]],
-        "brow":   [[0, 0], [500, 0.25], [2800, 0.25], [3200, 0]]
+        "eyeX": [[0, 0], [600, -0.9, "easeInOut"], [1500, -0.9], [2200, 0.9, "easeInOut"], [2800, 0.9], [3200, 0, "easeInOut"]],
+        "brow": [[0, 0], [500, 0.25], [2800, 0.25], [3200, 0]]
       }
     },
     "perkUp": {
-      "duration": 1100, "fadeIn": 80, "fadeOut": 250, "mode": "add",
+      "label": "반짝",
+      "duration": 1100,
+      "fadeIn": 80,
+      "fadeOut": 250,
+      "mode": "add",
       "tracks": {
         "angleY": [[0, 0], [180, 0.35, "easeOut"], [600, 0.1], [1100, 0, "easeInOut"]],
-        "body":   [[0, 0], [200, 0.2], [1100, 0]],
-        "brow":   [[0, 0], [150, 0.5], [800, 0.4], [1100, 0]]
+        "body": [[0, 0], [200, 0.2], [1100, 0]],
+        "brow": [[0, 0], [150, 0.5], [800, 0.4], [1100, 0]]
       }
     },
     "turnAway": {
-      "duration": 2400, "fadeIn": 150, "fadeOut": 500, "mode": "add",
+      "label": "고개 돌리기",
+      "duration": 2400,
+      "fadeIn": 150,
+      "fadeOut": 500,
+      "mode": "add",
       "tracks": {
         "angleX": [[0, 0], [400, 0.7, "easeOut"], [1900, 0.65], [2400, 0, "easeInOut"]],
         "angleZ": [[0, 0], [400, -0.3, "easeOut"], [1900, -0.3], [2400, 0]],
-        "eyeX":   [[0, 0], [400, -0.8, "easeOut"], [1900, -0.8], [2400, 0]]
+        "eyeX": [[0, 0], [400, -0.8, "easeOut"], [1900, -0.8], [2400, 0]]
       }
     },
     "stretch": {
-      "duration": 2600, "fadeIn": 300, "fadeOut": 500, "mode": "add",
+      "label": "기지개",
+      "duration": 2600,
+      "fadeIn": 300,
+      "fadeOut": 500,
+      "mode": "add",
       "tracks": {
         "angleY": [[0, 0], [700, 0.45, "easeOut"], [1800, 0.45], [2600, 0, "easeInOut"]],
-        "body":   [[0, 0], [700, -0.3], [1400, 0.3], [2600, 0]],
-        "armY":   [[0, 0], [700, 0.8, "easeOut"], [1800, 0.8], [2600, 0, "easeInOut"]],
+        "body": [[0, 0], [700, -0.3], [1400, 0.3], [2600, 0]],
+        "armY": [[0, 0], [700, 0.8, "easeOut"], [1800, 0.8], [2600, 0, "easeInOut"]],
         "eyeOpenL": [[0, 0], [600, -0.8], [1800, -0.8], [2400, 0]],
         "eyeOpenR": [[0, 0], [600, -0.8], [1800, -0.8], [2400, 0]],
         "mouthOpen": [[0, 0], [700, 0.7], [1600, 0.7], [2100, 0]]
       }
+    },
+    "wave": {
+      "label": "손 흔들기",
+      "duration": 2400,
+      "fadeIn": 250,
+      "fadeOut": 450,
+      "mode": "add",
+      "tracks": {
+        "armRY": [[0, 0], [400, 0.85, "easeOut"], [2000, 0.85], [2400, 0, "easeInOut"]],
+        "armRX": [[0, 0], [400, 0.25, "easeOut"], [650, 0.45], [900, 0.2], [1150, 0.45], [1400, 0.2], [1650, 0.45], [1900, 0.25], [2400, 0, "easeInOut"]],
+        "angleZ": [[0, 0], [400, -0.15], [2000, -0.15], [2400, 0]],
+        "poseWave": [[0, 0], [300, 1, "easeOut"], [2000, 1], [2400, 0, "easeInOut"]],
+        "poseSwing": [[0, 0], [400, 0.8], [650, -0.8], [900, 0.8], [1150, -0.8], [1400, 0.8], [1650, -0.8], [1900, 0.5], [2400, 0]]
+      }
+    },
+    "cheer": {
+      "label": "만세",
+      "duration": 1800,
+      "fadeIn": 200,
+      "fadeOut": 400,
+      "mode": "add",
+      "tracks": {
+        "armLY": [[0, 0], [350, 1.1, "easeOut"], [1400, 1.1], [1800, 0, "easeInOut"]],
+        "armRY": [[0, 0], [350, 1.1, "easeOut"], [1400, 1.1], [1800, 0, "easeInOut"]],
+        "armLX": [[0, 0], [350, 0.2], [1400, 0.2], [1800, 0]],
+        "armRX": [[0, 0], [350, 0.2], [1400, 0.2], [1800, 0]],
+        "angleY": [[0, 0], [350, 0.3, "easeOut"], [1400, 0.25], [1800, 0]]
+      }
+    },
+    "handToChin": {
+      "label": "턱 괴기",
+      "duration": 3000,
+      "fadeIn": 350,
+      "fadeOut": 500,
+      "mode": "add",
+      "tracks": {
+        "armLX": [[0, 0], [600, -0.55, "easeOut"], [2500, -0.55], [3000, 0, "easeInOut"]],
+        "armLY": [[0, 0], [600, 0.75, "easeOut"], [2500, 0.75], [3000, 0, "easeInOut"]],
+        "angleZ": [[0, 0], [600, 0.25], [2500, 0.25], [3000, 0]],
+        "eyeY": [[0, 0], [600, 0.3], [2500, 0.3], [3000, 0]]
+      }
     }
   },
-
   "reactions": {
-    "GREETING":    [ { "motion": "nod", "expression": "smile", "hold": 1800, "talk": 1200 } ],
-    "FOCUS_START": [ { "motion": "nod", "expression": "softSmile", "hold": 1500 },
-                     { "motion": "perkUp", "expression": "softSmile", "hold": 1500 } ],
+    "GREETING": [
+      { "motion": "wave", "expression": "smile", "hold": 2200, "talk": 1200 }
+    ],
+    "FOCUS_START": [
+      { "motion": "nod", "expression": "softSmile", "hold": 1500 },
+      { "motion": "perkUp", "expression": "softSmile", "hold": 1500 }
+    ],
     "GAZE_AWAY": [
-      { "intensity": 1, "motion": "glanceAtUser", "expression": "stare",   "hold": 1600 },
-      { "intensity": 2, "motion": "tiltAndTalk",  "expression": "worried", "hold": 2200 },
-      { "intensity": 3, "motion": "lookDownSulk", "expression": "pout",    "hold": 2600 }
+      { "intensity": 1, "motion": "glanceAtUser", "expression": "stare", "hold": 1600 },
+      { "intensity": 2, "motion": "tiltAndTalk", "expression": "worried", "hold": 2200 },
+      { "intensity": 3, "motion": "lookDownSulk", "expression": "angry", "hold": 2600 }
     ],
     "AWAY": [
       { "intensity": 1, "motion": "lookAround", "expression": "worried", "hold": 3200 },
       { "intensity": 2, "motion": "lookAround", "expression": "worried", "hold": 3200, "talk": 1200 },
-      { "intensity": 3, "motion": "turnAway",   "expression": "pout",    "hold": 2400 }
+      { "intensity": 3, "motion": "turnAway", "expression": "sad", "hold": 2400 }
     ],
     "RETURN": [
-      { "intensity": 1, "motion": "perkUp",    "expression": "softSmile", "hold": 1500 },
-      { "intensity": 2, "motion": "doubleNod", "expression": "smile",     "hold": 1800, "talk": 1000 },
-      { "intensity": 3, "motion": "turnAway",  "expression": "pout",      "hold": 2400, "then": "softSmile" }
+      { "intensity": 1, "motion": "perkUp", "expression": "softSmile", "hold": 1500 },
+      { "intensity": 2, "motion": "doubleNod", "expression": "smile", "hold": 1800, "talk": 1000 },
+      { "intensity": 3, "motion": "turnAway", "expression": "pout", "then": "softSmile", "hold": 2400 }
     ],
-    "LONG_FOCUS":  [ { "motion": "doubleNod", "expression": "smile", "hold": 2000 } ],
-    "IDLE": [ { "motion": "stretch", "weight": 1 }, { "expression": "sleepy", "hold": 2500, "weight": 2 } ]
+    "LONG_FOCUS": [
+      { "motion": "cheer", "expression": "grin", "hold": 1800 },
+      { "motion": "doubleNod", "expression": "smile", "hold": 2000 }
+    ],
+    "IDLE": [
+      { "motion": "stretch", "weight": 1 },
+      { "expression": "sleepy", "hold": 2500, "weight": 2 },
+      { "motion": "handToChin", "expression": "thinking", "hold": 3000, "weight": 1 }
+    ]
   }
 }

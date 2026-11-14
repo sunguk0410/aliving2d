@@ -91,7 +91,9 @@ function build(input, outDir, opts) {
   const edit = opts.settings ? editorState(opts.settings, rig) : {};
   const bundle = Bundle.buildManifest(rig, {
     source: { file: path.basename(input), fingerprint: RT.fingerprint(ab), tool: 'build-bundle' },
-    layerState: edit.layerState, settings: edit.settings, anchorOffsets: edit.anchorOffsets, cleanup: pre
+    layerState: edit.layerState, anchorOffsets: edit.anchorOffsets, cleanup: pre,
+    // models with skin eyelids close their eyes with them by default (editor does the same)
+    settings: Object.assign(rig.layers.some(L => L.fade === 'eyeLid') ? { eyeLid: 1 } : {}, edit.settings || {})
   });
   const deflate = raw => zlib.deflateSync(raw, { level: 9 });
   const byZ = new Map(rig.layers.map(L => [L.z, L]));

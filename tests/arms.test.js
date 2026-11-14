@@ -3,7 +3,7 @@
  * Arm rig: rigger split + anchors, FK sign conventions, two-bone IK.
  *   node tests/arms.test.js [sample2.psd]
  * Needs a PSD whose handwear layer holds only the arms (sample2.psd).
- * sample.psd puts the whole torso in handwear, so the rig must stay off there.
+ * sample.psd puts the whole torso in handwear: the arms are carved out of it.
  */
 const assert = require('assert');
 const fs = require('fs');
@@ -144,11 +144,34 @@ for (const s of ['L', 'R']) {
   near(M2.ARMS.L.E.y, M.ARMS.L.E.y - 20, 1e-9, 'elbow offset applied');
 }
 
-// sample.psd: torso inside handwear -> no arm rig
+// sample.psd: torso inside handwear -> arms are cut out, the rest becomes the upper body
 const s1 = path.join(__dirname, '..', 'sample.psd');
 if (fs.existsSync(s1) && !process.argv[2]) {
   const r1 = rigFromPsd(s1);
-  assert.ok(!r1.anchors.armL && !r1.anchors.armR, 'no arm anchors when handwear holds the torso');
-  assert.ok(r1.layers.some(L => L.name === 'handwear' && !L.side), 'handwear kept whole');
+  assert.ok(r1.anchors.armL && r1.anchors.armR, 'arm anchors after carving');
+  const carved = r1.layers.filter(L => L.carved);
+  assert.deepStrictEqual(carved.map(L => L.name).sort(), ['handwear_l', 'handwear_r', 'topwear'], 'torso + two arms');
+  const names = r1.layers.map(L => L.name);
+  assert.ok(names.indexOf('topwear') < names.indexOf('handwear_l'), 'arms are drawn over the torso');
+  for (const s of ['L', 'R']) {
+    const a = r1.anchors['arm' + s], w = r1.anchors.face.x1 - r1.anchors.face.x0;
+    assert.ok(a.width > w * 0.15 && a.width < w * 0.55, s + ' carved arm width is arm-like: ' + a.width);
+  }
+}
+// synthetic: a torso with darker sleeves separated by a painted line
+{
+  const W = 400, H = 400, FACE = { cx: 200, cy: 80, x0: 160, x1: 240, y0: 40, y1: 120 };
+  const data = new Uint8ClampedArray(W * H * 4), alpha = new Uint8Array(W * H);
+  for (let y = 140; y < 390; y++) for (let x = 90; x < 310; x++) {
+    const k = y * W + x, sleeve = x < 120 || x >= 280, line = x === 120 || x === 121 || x === 278 || x === 279;
+    const v = line ? 20 : sleeve ? 90 : 140; data.set([v, v, v, 255], k * 4); alpha[k] = 255;
+  }
+  const cv = Rigger._internals.carveArms({ name: 'handwear', left: 0, top: 0, imageData: { width: W, height: H, data } }, alpha, W, H, FACE);
+  assert.ok(cv, 'carves a torso-mixed layer');
+  let edge = -1; for (let x = 0; x < W; x++) if (cv.l[300 * W + x]) edge = x;
+  assert.ok(edge >= 118 && edge <= 122, 'the cut follows the painted line (' + edge + ')');
+  assert.ok(cv.torsoAlpha[300 * W + 112] > 0 && cv.torsoAlpha[300 * W + 95] === 0, 'the torso is filled a little behind the arm, not all the way');
+  const flat = new Uint8Array(W * H); for (let y = 140; y < 390; y++) for (let x = 170; x < 230; x++) flat[y * W + x] = 255;
+  assert.strictEqual(Rigger._internals.carveArms({ left: 0, top: 0, imageData: { width: W, height: H, data } }, flat, W, H, FACE), null, 'a narrow layer is not a torso');
 }
 console.log('ok arms ' + path.basename(file) + ': split, anchors, FK, IK, continuity, deform');

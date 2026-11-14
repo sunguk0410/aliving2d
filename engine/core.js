@@ -27,12 +27,27 @@
     fhAmp: 2, fhSoft: 0.4, eyeCY: 0, eyeCAng: 0, mouthCAng: 0, eyeScaleL: 1, eyeScaleR: 1, mouthScale: 1, accAmp: 1,
     // capsule extensions (0 = upstream behaviour)
     mouthCForm: 0,
+    // expressions: smiling eyes (lower lid up / closed eye arched), mouth width,
+    // triangle mouth (+ ▽, - △), puffed cheeks
+    eyeSmile: 0, mouthWide: 0, mouthTri: 0, cheekPuff: 0,
+    // 1 = close the eyes with the skin eyelid (Rigger 'eye_lid' layers) instead of swapping pictures
+    eyeLid: 0,
+    // effect layers (Rigger synthesizes them; 0 = hidden)
+    fxBlush: 0, fxSweat: 0, fxTears: 0, fxAnger: 0, fxGloom: 0,
+    // drawn arm poses with props (seethrough/pose_art.py): 1 = that pose's arms instead of the rigged ones;
+    // poseSwing rocks the waving hand
+    poseTyping: 0, poseWriting: 0, poseWave: 0, poseSwing: 0,
     // arms: FK angles in degrees (shoulder + = raise outward, elbow + = bend inward)
     // and IK wrist target offsets in arm lengths (X + = outward, Y + = up)
     armLShoulder: 0, armLElbow: 0, armRShoulder: 0, armRElbow: 0, armLX: 0, armLY: 0, armRX: 0, armRY: 0
   };
   const ARM_KEYS = ['armLShoulder', 'armLElbow', 'armRShoulder', 'armRElbow', 'armLX', 'armLY', 'armRX', 'armRY'];
-  const EXTENSIONS = ['mouthCForm'].concat(ARM_KEYS);
+  const FACE_KEYS = ['eyeSmile', 'mouthWide', 'mouthTri', 'cheekPuff'];
+  const FX_KEYS = ['fxBlush', 'fxSweat', 'fxTears', 'fxAnger', 'fxGloom'];
+  const POSE_ART_KEYS = ['poseTyping', 'poseWriting', 'poseWave', 'poseSwing'];
+  const POSES = { typing: 'poseTyping', writing: 'poseWriting', wave: 'poseWave' };
+  const LOWER_BODY = { bottomwear: 1, legwear: 1, footwear: 1 };
+  const EXTENSIONS = ['mouthCForm', 'eyeLid'].concat(FACE_KEYS, FX_KEYS, POSE_ART_KEYS, ARM_KEYS);
   const RANGES = {
     angleX: [-1, 1], angleY: [-1, 1], angleZ: [-1, 1], eyeOpenL: [0, 1], eyeOpenR: [0, 1], eyeX: [-1, 1], eyeY: [-1, 1],
     irisScale: [0.5, 1.3], eyeScaleL: [0.5, 1.5], eyeScaleR: [0.5, 1.5], eyeEase: [0, 1], eyeCY: [-1, 1], eyeCAng: [-1, 1],
@@ -41,6 +56,9 @@
     bangL: [-1, 1], bangC: [-1, 1], bangR: [-1, 1], body: [-1, 1], armY: [-1, 1], armPos: [-1, 1], bust: [0, 4],
     bustY: [-3, 3], physAmp: [0, 3], soft: [0, 3], accAmp: [0, 3],
     mouthCForm: [-1, 1],
+    eyeSmile: [0, 1], mouthWide: [-1, 1], mouthTri: [-1, 1], cheekPuff: [0, 1], eyeLid: [0, 1],
+    fxBlush: [0, 1], fxSweat: [0, 1], fxTears: [0, 1], fxAnger: [0, 1], fxGloom: [0, 1],
+    poseTyping: [0, 1], poseWriting: [0, 1], poseWave: [0, 1], poseSwing: [-1, 1],
     armLShoulder: [-90, 180], armRShoulder: [-90, 180], armLElbow: [-60, 160], armRElbow: [-60, 160],
     armLX: [-1.5, 1.5], armLY: [-1.5, 1.5], armRX: [-1.5, 1.5], armRY: [-1.5, 1.5]
   };
@@ -62,6 +80,8 @@
       let { nx, ny } = RT.meshSize(L.w, L.h, cell);
       // capsule: mouths are tiny, so give them enough columns to bend smoothly
       if (L.bn === 'mouth_open' || L.bn === 'mouth_close') { nx = Math.max(nx, 12); ny = Math.max(ny, 4); }
+      // capsule: the eyelid unrolls column by column and the lashes follow it
+      if (L.bn === 'eye_lid' || L.bn === 'eyelash' || L.bn === 'eyelash_lower') { nx = Math.max(nx, 14); ny = Math.max(ny, 8); }
       // capsule: rigged arms bend at the elbow, so they need rows along their length
       if (L.bn === 'handwear' && L.side && rig.anchors && rig.anchors['arm' + L.side]) {
         const long = Math.max(L.w, L.h), short = Math.min(L.w, L.h);
@@ -101,6 +121,13 @@
       A: null, FS: 1, NP: null, BP: null, FC: null, CHEST: null,
       bounce: { x: 0, v: 0, dy: 0 },
       hasEyeClose2: layers.some(L => L.bn === 'eye_close2'),
+      // capsule: drawn expression states (seethrough/expression_art.py); without them nothing changes
+      hasEyeSmile: layers.some(L => L.fade === 'eyeSmile'),
+      hasMouthShapes: layers.some(L => L.fade === 'mouthGrin' || L.fade === 'mouthO' || L.fade === 'mouthSmile'),
+      hasMouthSmile: layers.some(L => L.fade === 'mouthSmile'),
+      poseKeys: [...new Set(layers.filter(L => L.pose && POSES[L.pose]).map(L => POSES[L.pose]))],
+      hasLid: layers.some(L => L.fade === 'eyeLid'),
+      hasLowerLash: layers.some(L => L.bn === 'eyelash_lower'),
       blinkVariant: 1,
       physics: true
     };
@@ -137,6 +164,19 @@
         rest1: Math.atan2(E.y - S.y, E.x - S.x), rest2: Math.atan2(Wr.y - E.y, Wr.x - E.x) };
     }
     for (const L of M.layers) { buildBangWeights(M, L); buildArmWeights(M, L); }
+  }
+
+  // Eye-local frame: centre, axis (cos/sin of EA.ang) and the white's half length A / half
+  // height B along / across that axis, recovered from the axis-aligned box. ang 0 -> A, B = box halves.
+  function eyeFrame(EA) {
+    if (EA._f && EA._f.ang === (EA.ang || 0) && EA._f.x0 === EA.x0 && EA._f.y0 === EA.y0) return EA._f;
+    const a = EA.ang || 0, c = Math.cos(a), s = Math.sin(a), c2 = c * c, s2 = s * s;
+    const Wb = (EA.x1 - EA.x0) / 2, Hb = (EA.y1 - EA.y0) / 2, det = Math.max(1e-3, c2 - s2);
+    const A2 = (c2 * Wb * Wb - s2 * Hb * Hb) / det, B2 = (c2 * Hb * Hb - s2 * Wb * Wb) / det;
+    const A = Math.sqrt(Math.max(A2, Wb * Wb * 0.5)), B = Math.sqrt(Math.max(B2, Math.pow(0.15 * A, 2)));
+    const f = { ang: a, x0: EA.x0, y0: EA.y0, cx: (EA.x0 + EA.x1) / 2, cy: (EA.y0 + EA.y1) / 2, c, s, A: a ? A : Wb, B: a ? B : Hb };
+    Object.defineProperty(EA, '_f', { value: f, writable: true, configurable: true, enumerable: false });
+    return f;
   }
 
   // ---------- arms (capsule extension) ----------
@@ -245,17 +285,62 @@
   }
 
   // ---------- upstream math (do not edit without re-running the equivalence test) ----------
+  // Which drawn mouth shows (models with mouth_grin / mouth_o art): closed below the open threshold,
+  // otherwise the round "o" for a narrow mouth, the open smile for a smiling mouth, else the plain open mouth.
+  function mouthShape(e, M) {
+    if (e.mouthOpen < 0.05 + e.mouthEase * 0.35) return M && M.hasMouthSmile && e.mouthForm > 0.45 ? 'smile' : 'close';
+    if (-e.mouthWide > 0.35) return 'o';
+    if (e.mouthForm > 0.45) return 'grin';
+    return 'open';
+  }
+
   function fadeAlpha(M, L, e, alt) {
     const blinkVariant = M.blinkVariant;
+    // capsule: drawn poses replace the rigged arms (only on models that have pose art)
+    if (L.fade === 'pose') return clamp(e[POSES[L.pose]] || 0, 0, 1);
+    if (M.poseKeys && M.poseKeys.length && L.bn === 'handwear') { let m = 0; for (const k of M.poseKeys) m = Math.max(m, e[k] || 0); return 1 - clamp(m, 0, 1); }
+    // sitting behind the desk of a desk pose: the lower body goes away
+    if (M.poseKeys && (M.poseKeys.includes('poseTyping') || M.poseKeys.includes('poseWriting')) && LOWER_BODY[L.bn]) {
+      return 1 - clamp(Math.max(M.poseKeys.includes('poseTyping') ? e.poseTyping || 0 : 0, M.poseKeys.includes('poseWriting') ? e.poseWriting || 0 : 0), 0, 1);
+    }
     if (!L.fade) return 1;
-    if (L.fade === 'eyeOpen') { const v = L.side === 'L' ? e.eyeOpenL : e.eyeOpenR; return smooth((v - (0.10 + e.eyeEase * 0.45)) / 0.15); }
+    if (L.fade === 'fx') return clamp(e[L.fx] || 0, 0, 1);   // capsule effect layers
+    // capsule: eyelid mode - open-eye parts stay, the lid covers them; no closed-eye pictures
+    const lidOn = M.hasLid && e.eyeLid >= 0.5;
+    if (L.fade === 'eyeLid' && !lidOn) return 0;
+    if (lidOn && L.side && (L.fade === 'eyeLid' || L.fade === 'eyeOpen' || L.fade === 'eyeClose' || L.fade === 'eyeClose2' || L.fade === 'eyeSmile')) {
+      const v = L.side === 'L' ? e.eyeOpenL : e.eyeOpenR;
+      // a closed smile uses the drawn ^ ^ lines (expression_art.py) over the bare face: switched, not blended
+      const smileArt = M.hasEyeSmile && !M.hasLowerLash && e.eyeSmile >= 0.5 && v <= 0.15;   // split lashes: the rig smiles by itself
+      if (L.fade === 'eyeSmile') return smileArt ? 1 : 0;
+      if (smileArt) return 0;
+      if (L.fade === 'eyeLid') return v < 0.995 ? 1 : 0;
+      return L.fade === 'eyeOpen' ? 1 : 0;
+    }
+    // capsule: with drawn eye states (expression_art.py) open and closed eyes swap over a short range,
+    // so two different drawings never sit half-transparent on top of each other
+    const eyeW = M.hasEyeSmile ? 0.06 : 0.15, mouthW = M.hasMouthShapes ? 0.05 : 0.12;
+    if (L.fade === 'eyeOpen') { const v = L.side === 'L' ? e.eyeOpenL : e.eyeOpenR; return smooth((v - (0.10 + e.eyeEase * 0.45)) / eyeW); }
     if (L.fade === 'eyeClose' || L.fade === 'eyeClose2') {
       const alternate = blinkVariant === 2 && alt[L.side];
       if ((L.fade === 'eyeClose2') !== alternate) return 0;
-      const v = L.side === 'L' ? e.eyeOpenL : e.eyeOpenR; return 1 - smooth((v - (0.10 + e.eyeEase * 0.45)) / 0.15);
+      const v = L.side === 'L' ? e.eyeOpenL : e.eyeOpenR; const closed = 1 - smooth((v - (0.10 + e.eyeEase * 0.45)) / eyeW);
+      return M.hasEyeSmile ? closed * (1 - smooth((e.eyeSmile - 0.3) / 0.25)) : closed;   // capsule: smiling closed eyes have their own art
     }
-    if (L.fade === 'mouthOpen') return smooth((e.mouthOpen - (0.05 + e.mouthEase * 0.35)) / 0.12);
-    if (L.fade === 'mouthClose') return 1 - smooth((e.mouthOpen - (0.05 + e.mouthEase * 0.35)) / 0.12);
+    if (L.fade === 'eyeSmile') {   // capsule: drawn ^ ^ eyes, shown instead of the closed eye while smiling
+      const v = L.side === 'L' ? e.eyeOpenL : e.eyeOpenR;
+      return (1 - smooth((v - (0.10 + e.eyeEase * 0.45)) / eyeW)) * smooth((e.eyeSmile - 0.3) / 0.25);
+    }
+    if (L.fade === 'mouthSmile') return M.hasMouthShapes && mouthShape(e, M) === 'smile' ? 1 : 0;
+    if (M.hasMouthShapes && (L.fade === 'mouthOpen' || L.fade === 'mouthGrin' || L.fade === 'mouthO' || L.fade === 'mouthClose')) {
+      // capsule: drawn mouth shapes are switched, never blended - exactly one mouth is visible
+      const shape = mouthShape(e, M);
+      return (L.fade === 'mouthClose' ? 'close' : L.fade === 'mouthGrin' ? 'grin' : L.fade === 'mouthO' ? 'o' : 'open') === shape ? 1 : 0;
+    }
+    if (L.fade === 'mouthOpen' || L.fade === 'mouthGrin' || L.fade === 'mouthO') {
+      return L.fade === 'mouthOpen' ? smooth((e.mouthOpen - (0.05 + e.mouthEase * 0.35)) / mouthW) : 0;
+    }
+    if (L.fade === 'mouthClose') return 1 - smooth((e.mouthOpen - (0.05 + e.mouthEase * 0.35)) / mouthW);
     return 1;
   }
 
@@ -298,12 +383,58 @@
         const sE = eyeSide === 'L' ? e.eyeScaleL : e.eyeScaleR;
         if (sE !== 1) { const cxE = (EA.x0 + EA.x1) / 2, cyE = (EA.y0 + EA.y1) / 2; x = cxE + (x - cxE) * sE; y = cyE + (y - cyE) * sE; }
       }
-      if (bn === 'mouth_open' || bn === 'mouth_close') {
+      if (bn === 'mouth_open' || bn === 'mouth_close' || bn === 'mouth_grin' || bn === 'mouth_o' || bn === 'mouth_smile') {
         const sM = e.mouthScale;
         if (sM !== 1) { x = A.mouth.cx + (x - A.mouth.cx) * sM; y = A.mouth.cy + (y - A.mouth.cy) * sM; }
+        // capsule: wide grin / small round mouth; an open mouth gets taller as it narrows
+        if (e.mouthWide) {
+          x = A.mouth.cx + (x - A.mouth.cx) * (1 + 0.32 * e.mouthWide);
+          if (bn !== 'mouth_close') y = A.mouth.y0 + (y - A.mouth.y0) * (1 - 0.25 * e.mouthWide);
+        }
+        // capsule: triangle mouth, ▽ (> 0, narrow bottom) or △ (< 0, narrow top)
+        if (e.mouthTri && bn === 'mouth_open') {
+          const v = clamp((y - A.mouth.y0) / Math.max(1, A.mouth.y1 - A.mouth.y0), 0, 1);
+          x = A.mouth.cx + (x - A.mouth.cx) * (1 - 0.7 * Math.abs(e.mouthTri) * (e.mouthTri > 0 ? v : 1 - v));
+        }
       }
       // --- local features ---
-      if (L.fade === 'eyeOpen' && EA) {
+      const lidMode = M.hasLid && e.eyeLid >= 0.5 && EA && (L.fade === 'eyeOpen' || L.fade === 'eyeLid');
+      if (lidMode) {
+        // capsule: eyelid closing. k = how closed. The lid (skin) unrolls from the top of the opening
+        // down to its bottom, column by column; the upper lashes ride on its edge (moved, not squashed)
+        // and end as the closed-eye line - ∪ when calm, ∩ (^ ^) when smiling.
+        const k = clamp((0.98 - vOpen) / 0.93, 0, 1), ax = eyeFrame(EA);
+        const lu = (x - ax.cx) * ax.c + (y - ax.cy) * ax.s, lv = -(x - ax.cx) * ax.s + (y - ax.cy) * ax.c;
+        const q = clamp(lu / Math.max(1, ax.A * 1.05), -1, 1), sq = Math.sqrt(Math.max(0, 1 - q * q));
+        // the upper lash line starts on the eye's top arc (-B·sq) and ends as an almost flat line a
+        // little below the centre: slight ∪ when calm, ∩ when smiling
+        const sm = clamp(e.eyeSmile, 0, 1);
+        const target = ax.B * (0.4 + 0.18 * sq + sm * (0.15 - 0.85 * sq));   // smiling: corners lower, middle arched up
+        const d = k * (target + ax.B * sq);
+        let nv = lv;
+        if (bn === 'eye_lid') {   // a curtain down to the lash; near the end it covers the whole opening (∩ smile)
+          const lash = -ax.B * sq + d, full = ax.B * 2;   // full: past the bottom, nothing cut off
+          const edge = lash + Math.pow(k, 4) * Math.max(0, full - lash);
+          if (lv > edge) nv = edge;
+        }
+        else if (bn === 'eyelash') {
+          const arc = -ax.B * sq;
+          const wUp = smooth((-lv + ax.B * 0.2) / (ax.B * 0.5));   // upper lashes move, lower lashes stay
+          // the band gets thinner as it closes (a closed eye is a line, not the open lash). The
+          // double-eyelid crease is its own layer (eyelash_crease, Rigger) and stays where it is.
+          // (thinner still in a smile: ^ ^ is a fine line)
+          const sq0 = L.lashSquash != null ? L.lashSquash : 0.35;   // Rigger: thicker lashes thin more
+          nv = lv + wUp * (d - (lv - arc) * Math.min(0.85, sq0 + 0.15 * sm) * k);
+          // lashes not split into upper / lower (Rigger could not): the lower ones rise into the line
+          if (!M.hasLowerLash && sm > 0 && lv > target) nv += (1 - wUp) * k * k * sm * (target - lv) * 0.95;
+        } else if (bn === 'eyelash_lower') {
+          // smiling: the lower lashes rise and bend up to meet the upper ones just under the line
+          const low = ax.B * sq, meet = target + ax.B * 0.12;
+          nv = lv + k * sm * ((meet - low) - (lv - low) * 0.5);
+        }
+        if (nv !== lv) { const d = nv - lv; x += -d * ax.s; y += d * ax.c; }
+      }
+      if (L.fade === 'eyeOpen' && EA && !lidMode) {
         if (bn === 'irides') {
           const isc = e.irisScale, ibx = e.irisBounceX || 1, iby = e.irisBounceY || 1;
           x = EA.icx + (x - EA.icx) * isc * ibx; y = EA.icy + (y - EA.icy) * isc * iby;
@@ -312,9 +443,27 @@
           y = EA.closeY + (y - EA.closeY) * (1 - 0.80 * tl);
         } else {
           y = EA.closeY + (y - EA.closeY) * (1 - 0.85 * (1 - vOpen));   // lid compression
+          // capsule: smiling eyes - the lower lid rises in an arc (the white masks the iris),
+          // measured along the eye's own axis (EA.ang) so a tilted eye smiles along its line
+          if (e.eyeSmile) {
+            const ax = eyeFrame(EA), lu = (x - ax.cx) * ax.c + (y - ax.cy) * ax.s, lv = -(x - ax.cx) * ax.s + (y - ax.cy) * ax.c;
+            const top = -0.1 * ax.B;
+            if (lv > top) {
+              const u = clamp((lv - top) / Math.max(1, 1.4 * ax.B), 0, 1);
+              const q = clamp(lu / Math.max(1, ax.A), -1.2, 1.2);
+              const d = e.eyeSmile * 0.65 * 2 * ax.B * u * Math.max(0, 1 - 0.55 * q * q);
+              x += d * ax.s; y -= d * ax.c;
+            }
+          }
         }
       }
-      if ((L.fade === 'eyeClose' || L.fade === 'eyeClose2') && EA) {
+      if ((L.fade === 'eyeClose' || L.fade === 'eyeClose2' || L.fade === 'eyeSmile') && EA) {
+        // capsule: smiling closed eye bends into an arch (^ ^) along the eye's axis (drawn ^ ^ art is already arched)
+        if (e.eyeSmile && L.fade !== 'eyeSmile') {
+          const ax = eyeFrame(EA), lu = (x - bcx) * ax.c + (y - bcy) * ax.s;
+          const q = clamp(lu / Math.max(1, L.w * 0.5 / Math.max(0.6, ax.c)), -1, 1), d = e.eyeSmile * 2 * ax.A * 0.16 * (1 - q * q);
+          x += d * ax.s; y -= d * ax.c;
+        }
         y -= vOpen * 3; y += e.eyeCY * 14 * FS;
         const thE = e.eyeCAng * 0.3 * (eyeSide === 'L' ? 1 : -1);
         if (thE) { const ct = Math.cos(thE), st = Math.sin(thE), rx = x - bcx, ry = y - bcy; x = bcx + rx * ct - ry * st; y = bcy + rx * st + ry * ct; }
@@ -324,6 +473,7 @@
         const th = (eyeSide === 'L' ? (e.browAngL + e.browAngSym) : (e.browAngR - e.browAngSym)) * 0.30;
         if (th) { const ct = Math.cos(th), st = Math.sin(th), rx = x - bcx, ry = y - bcy; x = bcx + rx * ct - ry * st; y = bcy + rx * st + ry * ct; }
       }
+      if (L.fade === 'mouthGrin' || L.fade === 'mouthO') y = A.mouth.y0 + (y - A.mouth.y0) * (0.5 + 0.5 * mo);   // capsule: drawn shapes open with mouthOpen
       if (L.fade === 'mouthOpen') {
         y = A.mouth.y0 + (y - A.mouth.y0) * (0.5 + 0.5 * mo);
         const q = Math.pow(Math.abs(x - A.mouth.cx) / (mHalfW + 4), 1.5);
@@ -337,6 +487,25 @@
         if (thM) { const ct = Math.cos(thM), st = Math.sin(thM), rx = x - A.mouth.cx, ry = y - A.mouth.cy; x = A.mouth.cx + rx * ct - ry * st; y = A.mouth.cy + rx * st + ry * ct; }
       }
       if (bn === 'face' && y > A.mouth.cy) y += mo * 6 * FS * smooth((y - A.mouth.cy) / Math.max(1, A.face.y1 - A.mouth.cy));
+      // capsule: puffed cheeks push the face outline out between the eyes and the mouth
+      if (bn === 'face' && e.cheekPuff) {
+        const fw = A.face.x1 - A.face.x0, eyB = A.eyeL && A.eyeR ? (A.eyeL.y1 + A.eyeR.y1) / 2 : A.face.cy;
+        const cyc = eyB + (A.mouth.cy - eyB) * 0.6, sy = Math.max(8, (A.mouth.cy - eyB) * 0.9), dx = x - A.face.cx;
+        const g = Math.exp(-Math.pow((y - cyc) / sy, 2)) * smooth((Math.abs(dx) - fw * 0.12) / (fw * 0.3));
+        x += Math.sign(dx) * e.cheekPuff * 0.05 * fw * g;
+      }
+      // capsule: the waving pose rocks its hand around the lower part of the arm
+      if (L.pose === 'wave' && e.poseSwing) {
+        const px = bcx, py = L.y + L.h * 0.85, w = smooth((py - y) / Math.max(1, L.h * 0.7)), th = e.poseSwing * 0.22 * w;
+        const ct = Math.cos(th), st = Math.sin(th), rx = x - px, ry = y - py; x = px + rx * ct - ry * st; y = py + rx * st + ry * ct;
+      }
+      // capsule: effect layers move a little as they appear
+      if (L.fx) {
+        const v = clamp(e[L.fx] || 0, 0, 1);
+        if (L.fx === 'fxSweat') y -= (1 - v) * L.h * 0.3;                        // drop slides down
+        else if (L.fx === 'fxTears' || L.fx === 'fxGloom') y = L.y + (y - L.y) * (0.3 + 0.7 * v);   // grows downward
+        else if (L.fx === 'fxAnger') { const s = 0.6 + 0.4 * v; x = bcx + (x - bcx) * s; y = bcy + (y - bcy) * s; }   // pops in
+      }
       // --- head transform ---
       let hw = isHead ? 1 : (L.group === 'body' ? 0.16 : 0);   // body subtly follows head XYZ
       if (bn === 'neck') hw = 0.55 * smooth((A.neckBottom - y) / Math.max(1, A.neckBottom - A.neckTop));
@@ -421,5 +590,5 @@
     return { masks, items };
   }
 
-  return { DEFAULTS, RANGES, EXTENSIONS, ARM_KEYS, clamp, smooth, createModel, applyAnchors, fadeAlpha, deform, updateSprings, buildFrame, armPose, solveArmIK, armFront };
+  return { DEFAULTS, RANGES, EXTENSIONS, ARM_KEYS, FACE_KEYS, FX_KEYS, POSE_ART_KEYS, POSES, clamp, smooth, createModel, applyAnchors, fadeAlpha, deform, updateSprings, buildFrame, armPose, solveArmIK, armFront };
 });

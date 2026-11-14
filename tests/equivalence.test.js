@@ -53,6 +53,7 @@ for (const file of psdFiles) {
     const alt = { L: rnd() < 0.5, R: rnd() < 0.5 };
     for (let i = 0; i < mine.layers.length; i++) {
       const a = mine.layers[i], b = ref.layers[i];
+      if (a.fade === 'fx' || a.fade === 'eyeLid') continue;   // capsule-only layers (effects, skin eyelids): hidden at defaults; upstream has none
       Core.deform(mine, a, e); up.deform(b, e);
       for (let k = 0; k < a.cur.length; k++) maxErr = Math.max(maxErr, Math.abs(a.cur[k] - b.cur[k]));
       alphaErr = Math.max(alphaErr, Math.abs(Core.fadeAlpha(mine, a, e, alt) - up.fadeAlpha(b, e, alt)));

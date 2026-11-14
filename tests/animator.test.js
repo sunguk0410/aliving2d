@@ -45,10 +45,10 @@ const run = ms => { for (let t = 0; t < ms; t += 1000 / 60) an.update(1 / 60); }
 // intensity picks the matching candidate
 let c = an.react('GAZE_AWAY', 3);
 assert.strictEqual(c.motion, 'lookDownSulk');
-assert.strictEqual(an.state.expression, 'pout');
+assert.strictEqual(an.state.expression, 'angry');
 assert.deepStrictEqual(an.state.motions, ['lookDownSulk']);
 run(300);
-assert.ok(an.params.mouthCForm < -0.5, 'pout bends the closed mouth down');
+assert.ok(an.params.browAngSym > 0.5 && an.params.fxAnger > 0.8, 'angry tilts the brows in and shows the anger mark');
 
 // expression holds, then returns to the base expression
 run(2600);

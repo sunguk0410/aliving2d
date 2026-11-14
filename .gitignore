@@ -7,3 +7,11 @@ __pycache__/
 # Kept locally for tests; never commit it.
 sample.psd
 sample2.psd
+
+# see-through on a GPU desktop (seethrough/desktop.py)
+seethrough/.venv/
+seethrough/.jobs/
+seethrough_jobs/
+
+# OpenAI API key for 「AI로 자세 바로잡기」 (seethrough/redraw.py)
+.local/

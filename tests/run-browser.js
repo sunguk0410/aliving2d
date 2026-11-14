@@ -33,9 +33,9 @@ function freePort() {
   });
 }
 async function startServer() {
-  const port = await freePort();
+  const port = await freePort(), nothing = await freePort();   // no conversion server there (a real one may run on 7860)
   const python = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
-  const proc = spawn(python, ['serve.py', '--port', String(port)], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+  const proc = spawn(python, ['serve.py', '--port', String(port), '--no-seethrough', '--seethrough-port', String(nothing)], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
   proc.stderr.on('data', () => {});
   for (let i = 0; i < 100; i++) {
     try { const r = await fetch(`http://127.0.0.1:${port}/`); if (r.ok) return { proc, base: `http://127.0.0.1:${port}` }; } catch (err) {}
@@ -102,6 +102,13 @@ async function editorLive(browser, base) {
   await editor.click('#tgCam');
   await editor.waitForFunction(() => window.Anime25D.state().camLive, null, { timeout: 90000 })
     .then(() => report(true, 'face tracking detects a face from the (fake) webcam with the bundled MediaPipe'), () => report(false, 'face tracking detects a face from the (fake) webcam with the bundled MediaPipe'));
+  await editor.waitForFunction(() => window.Anime25D.state().hands === 'on', null, { timeout: 90000 })
+    .then(() => report(true, 'hand tracking (bundled MediaPipe Hands) starts next to face tracking'), async () => report(false, 'hand tracking starts: ' + (await state(editor)).hands));
+  // the first hands inference stalls the camera loop briefly (warm-up); face tracking then continues
+  await editor.waitForTimeout(2500);
+  await editor.waitForFunction(() => window.Anime25D.state().camLive, null, { timeout: 20000 }).catch(() => {});
+  const live = await state(editor);
+  report(live.camLive && live.cam.arms && live.cam.arms.L.presence === 0 && live.cam.arms.R.presence === 0, 'face keeps tracking with hands on; no hands in the video means arms at rest ' + JSON.stringify({ live: live.camLive, arms: live.cam.arms, status: await editor.textContent('#appStatus'), chip: await editor.textContent('#tgCam'), auto: live.auto.cam }));
   const cam = (await state(editor)).cam;
   report(['ax', 'ay', 'az', 'eL', 'eR', 'mo', 'ex', 'ey', 'br', 'mf'].every(k => Number.isFinite(cam[k])) && cam.eL > 0.8, 'tracking values are finite and the eyes read as open');
   await editor.evaluate(() => document.getElementById('btnCalibrate').click());

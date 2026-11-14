@@ -26,6 +26,7 @@ def code(text, title=None):
 
 def build():
     server = open(os.path.join(HERE, 'server.py'), encoding='utf-8').read()
+    prepare = open(os.path.join(HERE, 'prepare.py'), encoding='utf-8').read()
     skip_re = '|'.join(SKIP)
     cells = [
         md('''
@@ -59,9 +60,10 @@ if not os.path.isdir(REPO):
 !git checkout -q {SEE_THROUGH_COMMIT}
 !ln -sfn common/assets assets
 !grep -v -E "^({skip_re})([=@ ]|$)" requirements.txt > /tmp/st-requirements.txt
-!pip install -q -r /tmp/st-requirements.txt -r requirements-inference-bnb.txt
+!pip install -q -r /tmp/st-requirements.txt -r requirements-inference-bnb.txt onnxruntime
 print("설치 완료")
 ''', title=True),
+        code('%%writefile /content/capsule_prepare.py\n' + prepare),
         code('''
 #@title ② 그림 올리기 → PSD 받기 (다른 그림은 이 셀만 다시 실행)
 import glob, os, re, subprocess, time
@@ -108,6 +110,14 @@ for name, data in uploaded.items():
         img = img.resize((round(img.size[0] * k), round(img.size[1] * k)), Image.LANCZOS)
     img.save(src)
     del img, data
+    # 그림 다듬기: 배경 지우기 + 캐릭터만 흰 바탕 3:4로 (편집기와 같은 prepare.py)
+    prep = os.path.join(job, stem + "_prepared.png")
+    r = subprocess.run(["python", "/content/capsule_prepare.py", src, prep], capture_output=True, text=True)
+    if r.returncode == 0 and os.path.isfile(prep):
+        print("그림 다듬기 완료 (배경 지움):", r.stdout.strip().splitlines()[-1])
+        src = prep
+    else:
+        print("그림 다듬기 실패, 원본으로 변환합니다:", (r.stderr or r.stdout).strip().splitlines()[-1:])
     t0 = time.time()
     psds = []
     for label, extra in attempts:

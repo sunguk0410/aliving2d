@@ -8,15 +8,21 @@ or with --mode fake on a laptop without a GPU (tests, UI work).
   python seethrough/server.py --repo third_party/see-through            # local GPU
   python seethrough/server.py --repo /content/see-through --tunnel      # Colab
   python seethrough/server.py --mode fake --fake-psd sample2.psd        # no GPU
+  python seethrough/desktop.py                                          # GPU desktop: setup once, then run (see that file)
 
 The editor (index.html) talks to it with a "connection code": <url>#<token>.
 
 API (all JSON except the PSD downloads; every request needs X-Token unless --token ''):
   GET  /health             {ok, mode, gpu, busy, queued}
-  POST /jobs               body = image bytes (PNG/JPEG/WEBP), header X-Filename -> 202 {id}
+  POST /jobs               body = image bytes (PNG/JPEG/WEBP), header X-Filename, optional X-Resolution
+                           (1024 fast | 1152 | 1280 high quality; default --resolution) -> 202 {id}
   GET  /jobs/<id>          {id, status: queued|running|done|error, percent, step, log, elapsed, error}
   GET  /jobs/<id>/psd      parts PSD
   GET  /jobs/<id>/depth    per-layer depth PSD (see-through's *_depth.psd), if any
+  GET  /jobs/<id>/prepared the cleaned-up picture that was converted (prepare.py), if any
+
+Before conversion the picture is cleaned up for see-through (seethrough/prepare.py:
+background removed, character cropped onto white in a 3:4 frame). --no-prepare skips it.
 """
 import argparse
 import collections
@@ -97,6 +103,7 @@ class Job:
         self.status = 'queued'
         self.percent = 0
         self.step = 0          # how many progress bars finished (layers, depth, ...)
+        self.phase = 'queued'  # queued | prepare | parts | depth | psd | done | error
         self.log = collections.deque(maxlen=30)
         self.created = time.time()
         self.started = None
@@ -104,14 +111,17 @@ class Job:
         self.error = None
         self.psd = None
         self.depth = None
+        self.prepared = None
+        self.prep_info = None
         self.proc = None
 
     def to_json(self):
         now = self.finished or time.time()
-        return {'id': self.id, 'name': self.name, 'status': self.status, 'percent': self.percent, 'step': self.step,
+        phase = self.status if self.status in ('queued', 'done', 'error') else self.phase
+        return {'id': self.id, 'name': self.name, 'status': self.status, 'phase': phase, 'percent': self.percent, 'step': self.step,
                 'log': list(self.log)[-8:], 'error': self.error,
                 'elapsed': round(now - (self.started or self.created), 1), 'queued_for': round((self.started or now) - self.created, 1),
-                'has_depth': bool(self.depth)}
+                'has_depth': bool(self.depth), 'has_prepared': bool(self.prepared), 'prepare': self.prep_info}
 
 
 class Converter:
@@ -130,11 +140,16 @@ class Converter:
         threading.Thread(target=self._worker, daemon=True).start()
 
     # ---- jobs ----
-    def submit(self, data, name):
+    RESOLUTIONS = (1024, 1152, 1280)
+
+    def submit(self, data, name, resolution=None, prepare=True, body_only=False):
         ext = image_ext(data)
         if not ext:
             raise ValueError('PNG / JPEG / WEBP 이미지만 받습니다')
         job = Job(name, self.args.workdir)
+        job.resolution = resolution if resolution in self.RESOLUTIONS else None
+        job.prepare = prepare
+        job.body_only = body_only
         os.makedirs(job.dir, exist_ok=True)
         with open(os.path.join(job.dir, job.name + ext), 'wb') as f:
             f.write(data)
@@ -185,7 +200,7 @@ class Converter:
                     job = self.queue.popleft() if self.queue else None
                 if not job:
                     break
-                job.status, job.started = 'running', time.time()
+                job.status, job.started, job.phase = 'running', time.time(), 'parts'
                 try:
                     self._run(job)
                     job.status = 'done'
@@ -204,21 +219,30 @@ class Converter:
     def command(self, job, out, attempt=0):
         a, repo = self.args, self.args.repo
         if self.mode == 'nf4':
-            cmd = [a.python, os.path.join(repo, 'inference/scripts/inference_psd_quantized.py')] + self.NF4_ATTEMPTS[attempt]
+            script = os.path.join(repo, 'inference/scripts/inference_psd_quantized.py')
+            if getattr(job, 'body_only', False):   # study poses: arms + props only, half the time (body_only.py)
+                script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'body_only.py')
+            cmd = [a.python, script] + self.NF4_ATTEMPTS[attempt]
+        elif self.mode == 'blockswap':
+            # bf16 weights, transformer blocks swapped between CPU and GPU: ~8 GB at 1280
+            cmd = [a.python, os.path.join(repo, 'inference/scripts/inference_psd_blockswap.py')]
         else:
             cmd = [a.python, os.path.join(repo, 'inference/scripts/inference_psd.py')]
             if self.mode == 'offload':
                 cmd.append('--group_offload')
         cmd += ['--srcp', job.input, '--save_dir', out, '--save_to_psd']
-        if a.resolution:
-            cmd += ['--resolution', str(a.resolution)]
+        res = getattr(job, 'resolution', None) or a.resolution
+        if res:
+            cmd += ['--resolution', str(res)]
         return cmd
 
     def _run(self, job):
         out = os.path.join(job.dir, 'out')
         if self.mode == 'fake':
             return self._fake(job, out)
-        env = dict(os.environ, PYTHONUNBUFFERED='1')
+        env = dict(os.environ, PYTHONUNBUFFERED='1', PYTHONIOENCODING='utf-8', HF_HUB_DISABLE_SYMLINKS_WARNING='1')
+        if getattr(self.args, 'prepare', True) and getattr(job, 'prepare', True):
+            self._prepare(job, env)
         for attempt in range(self.attempts()):
             if job.error:
                 raise RuntimeError(job.error)
@@ -235,6 +259,25 @@ class Converter:
                 raise RuntimeError(job.error)
             job.log.append(f'(exit {code}) 다른 방식으로 다시 시도' if attempt + 1 < self.attempts() else f'(exit {code})')
         raise RuntimeError('see-through가 실패했습니다. 로그를 확인하세요')
+
+    def _prepare(self, job, env):
+        """Background removal + crop to a see-through friendly picture (prepare.py, in the see-through Python)."""
+        dst = os.path.join(job.dir, job.name + '_prepared.png')
+        job.phase = 'prepare'
+        job.log.append('그림 다듬기: 배경 지우기 · 캐릭터만 잘라 흰 바탕에 놓기')
+        r = subprocess.run([self.args.python, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'prepare.py'), job.input, dst],
+                           capture_output=True, env=env, timeout=600)
+        out = r.stdout.decode('utf-8', 'replace').strip().splitlines()
+        if r.returncode != 0 or not os.path.isfile(dst):
+            err = (r.stderr.decode('utf-8', 'replace').strip().splitlines() or out or ['?'])[-1]
+            job.log.append('그림 다듬기 실패, 원본 그대로 변환합니다: ' + err[-160:])
+            return
+        try:
+            job.prep_info = json.loads(out[-1])
+        except (ValueError, IndexError):
+            job.prep_info = None
+        job.prepared = job.input = dst
+        job.log.append('그림 다듬기 완료')
 
     def _pump(self, job, stream):
         """Read tqdm-style output (\\r updates) and keep percent + last lines."""
@@ -260,6 +303,12 @@ class Converter:
                         job.log[-1] = line[-160:]
                         continue
                 job.log.append(line[-160:])
+                if 'LayerDiff3D done' in line or 'Marigold' in line or 'depth pipeline' in line:
+                    job.phase = 'depth'
+                elif 'LayerDiff' in line and job.phase in ('queued', 'prepare', 'running'):
+                    job.phase = 'parts'
+                elif 'Stats saved' in line or 'psd saved' in line.lower():
+                    job.phase = 'psd'
                 if self.args.verbose:
                     print(f'[job {job.id}] {line}', flush=True)
 
@@ -270,9 +319,39 @@ class Converter:
             if not found:
                 raise RuntimeError('PSD가 만들어지지 않았습니다')
             psd = found[0]
-        job.psd = psd
         depth = os.path.splitext(psd)[0] + '_depth.psd'
         job.depth = depth if os.path.isfile(depth) else None
+        job.psd = self._fix_psd(job, psd) if self.mode != 'fake' else psd
+
+    def _fix_psd(self, job, psd):
+        """Erase hidden paintings that wrongly cover visible parts (fix_psd.py); the PSD as is on failure."""
+        src = os.path.join(os.path.splitext(psd)[0], 'src_img.png')
+        if not os.path.isfile(src):
+            return psd
+        job.phase = 'psd'
+        fixed_dir = os.path.join(job.dir, 'fixed')
+        os.makedirs(fixed_dir, exist_ok=True)
+        out = os.path.join(fixed_dir, os.path.basename(psd))
+        env = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1')
+        try:
+            r = subprocess.run([self.args.python, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fix_psd.py'), psd, src, out],
+                               capture_output=True, env=env, timeout=600)
+        except (OSError, subprocess.SubprocessError) as err:
+            job.log.append('PSD 정리 건너뜀: ' + str(err)[-120:])
+            return psd
+        lines = r.stdout.decode('utf-8', 'replace').strip().splitlines()
+        if r.returncode != 0:
+            job.log.append('PSD 정리 건너뜀: ' + (r.stderr.decode('utf-8', 'replace').strip().splitlines() or ['?'])[-1][-120:])
+            return psd
+        try:
+            info = json.loads(lines[-1])
+        except (ValueError, IndexError):
+            return psd
+        if info.get('written') and os.path.isfile(out):
+            job.log.append('PSD 정리: 가려진 부분을 덮던 그림 지움 ' + ', '.join(f'{k} {v}px' for k, v in info['erased'].items()))
+            return out
+        job.log.append('PSD 정리: 고칠 곳 없음')
+        return psd
 
     def _fake(self, job, out):
         os.makedirs(out, exist_ok=True)
@@ -281,6 +360,7 @@ class Converter:
             if job.error:
                 raise RuntimeError(job.error)
             job.percent = int(100 * i / steps)
+            job.phase = 'parts' if i < steps // 2 else 'depth'
             if i == steps // 2:
                 job.step += 1
             job.log.append(f'fake {job.percent}%|')
@@ -292,17 +372,33 @@ class Converter:
         self._collect(job, out)
 
 
-def make_handler(conv, token):
+def make_handler(conv, token, origins=None):
+    """origins: browser origins allowed to call the API (None = any). With no token, a desktop
+    server limits itself to the local editor so other web pages cannot use it."""
+    origins = set(origins) if origins else None
+
     class Handler(BaseHTTPRequestHandler):
         server_version = 'capsule-seethrough/%d' % VERSION
+
+        def _origin_ok(self):
+            origin = self.headers.get('Origin')
+            if origins is None or origin is None or origin in origins:
+                return True
+            self._json(403, {'error': '이 주소의 페이지에서는 쓸 수 없습니다 (편집기 http://127.0.0.1:8000 에서 여세요)'})
+            return False
 
         def log_message(self, fmt, *a):  # keep Colab output readable
             if conv.args.verbose:
                 sys.stderr.write('%s - %s\n' % (self.address_string(), fmt % a))
 
         def _cors(self):
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Token, X-Filename')
+            origin = self.headers.get('Origin')
+            if origins is None:
+                self.send_header('Access-Control-Allow-Origin', '*')
+            elif origin in origins:
+                self.send_header('Access-Control-Allow-Origin', origin)
+                self.send_header('Vary', 'Origin')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Token, X-Filename, X-Resolution, X-Prepare, X-Parts')
             self.send_header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
             self.send_header('Access-Control-Allow-Private-Network', 'true')
             self.send_header('Access-Control-Expose-Headers', 'Content-Disposition')
@@ -326,19 +422,21 @@ def make_handler(conv, token):
             return False
 
         def do_OPTIONS(self):
+            if not self._origin_ok():
+                return
             self.send_response(204)
             self._cors()
             self.send_header('Access-Control-Max-Age', '600')
             self.end_headers()
 
         def do_GET(self):
-            if not self._authed():
+            if not self._origin_ok() or not self._authed():
                 return
             path = self.path.split('?', 1)[0].rstrip('/')
             if path == '/health':
                 return self._json(200, {'ok': True, 'version': VERSION, 'mode': conv.mode, 'gpu': conv.gpu,
                                         'busy': conv.busy, 'queued': len(conv.queue)})
-            m = re.fullmatch(r'/jobs/([0-9a-f]{12})(/psd|/depth)?', path)
+            m = re.fullmatch(r'/jobs/([0-9a-f]{12})(/psd|/depth|/prepared)?', path)
             if not m:
                 return self._json(404, {'error': 'not found'})
             job = conv.get(m.group(1))
@@ -346,13 +444,13 @@ def make_handler(conv, token):
                 return self._json(404, {'error': '작업이 없습니다 (서버가 재시작되었나요?)'})
             if not m.group(2):
                 return self._json(200, job.to_json())
-            f = job.psd if m.group(2) == '/psd' else job.depth
-            if job.status != 'done' or not f:
+            f = {'/psd': job.psd, '/depth': job.depth, '/prepared': job.prepared}[m.group(2)]
+            if (m.group(2) != '/prepared' and job.status != 'done') or not f:
                 return self._json(409, {'error': '아직 결과가 없습니다'})
             size = os.path.getsize(f)
             self.send_response(200)
             self._cors()
-            self.send_header('Content-Type', 'application/octet-stream')
+            self.send_header('Content-Type', 'image/png' if m.group(2) == '/prepared' else 'application/octet-stream')
             self.send_header('Content-Length', str(size))
             self.send_header('Content-Disposition', 'attachment; filename="%s"' % os.path.basename(f))
             self.end_headers()
@@ -360,7 +458,7 @@ def make_handler(conv, token):
                 shutil.copyfileobj(fh, self.wfile)
 
         def do_POST(self):
-            if not self._authed():
+            if not self._origin_ok() or not self._authed():
                 return
             if self.path.split('?', 1)[0].rstrip('/') != '/jobs':
                 return self._json(404, {'error': 'not found'})
@@ -372,14 +470,19 @@ def make_handler(conv, token):
                 return self._json(413, {'error': '이미지는 40MB 이하로 보내 주세요'})
             data = self.rfile.read(n)
             try:
-                job = conv.submit(data, unquote(self.headers.get('X-Filename', 'image')))
+                try:
+                    res = int(self.headers.get('X-Resolution', '0'))
+                except ValueError:
+                    res = 0
+                job = conv.submit(data, unquote(self.headers.get('X-Filename', 'image')), res or None,
+                                  prepare=self.headers.get('X-Prepare', '1') != '0', body_only=self.headers.get('X-Parts') == 'body')
             except ValueError as err:
                 return self._json(400, {'error': str(err)})
             print(f'[job {job.id}] queued {job.name} ({n // 1024} KB, mode {conv.mode})', flush=True)
             return self._json(202, {'id': job.id})
 
         def do_DELETE(self):
-            if not self._authed():
+            if not self._origin_ok() or not self._authed():
                 return
             m = re.fullmatch(r'/jobs/([0-9a-f]{12})', self.path.split('?', 1)[0].rstrip('/'))
             if not m or not conv.cancel(m.group(1)):
@@ -423,22 +526,28 @@ def main(argv=None):
     ap.add_argument('--host', default='127.0.0.1')
     ap.add_argument('--port', type=int, default=7860)
     ap.add_argument('--token', default=None, help="access token (default: random; '' = no token, local use only)")
-    ap.add_argument('--mode', default='auto', choices=['auto', 'full', 'offload', 'nf4', 'fake'])
+    ap.add_argument('--mode', default='auto', choices=['auto', 'full', 'offload', 'blockswap', 'nf4', 'fake'])
     ap.add_argument('--resolution', type=int, default=0, help='LayerDiff resolution (default: script default, 1280)')
     ap.add_argument('--python', default=sys.executable)
     ap.add_argument('--workdir', default=os.path.join(os.path.abspath('.'), 'seethrough_jobs'))
     ap.add_argument('--tunnel', action='store_true', help='expose through a Cloudflare quick tunnel (Colab)')
     ap.add_argument('--fake-psd', default=None, help='--mode fake: PSD returned for every image')
     ap.add_argument('--fake-seconds', type=float, default=3.0)
+    ap.add_argument('--no-prepare', dest='prepare', action='store_false', help='convert the picture as is (no background removal / crop)')
+    ap.add_argument('--allow-origin', action='append', default=None, metavar='ORIGIN',
+                    help='only these browser origins may call the API (repeatable; default: any)')
     ap.add_argument('--verbose', action='store_true')
     args = ap.parse_args(argv)
     args.repo = os.path.abspath(args.repo)
+    if os.path.exists(args.python):   # jobs run with cwd = repo, so a relative path would break
+        args.python = os.path.abspath(args.python)
+    args.workdir = os.path.abspath(args.workdir)
     if args.mode != 'fake' and not os.path.isfile(os.path.join(args.repo, 'inference/scripts/inference_psd.py')):
         ap.error('see-through 저장소가 없습니다: ' + args.repo + ' (git submodule update --init)')
     token = secrets.token_urlsafe(12) if args.token is None else args.token
 
     conv = Converter(args)
-    httpd = ThreadingHTTPServer((args.host, args.port), make_handler(conv, token))
+    httpd = ThreadingHTTPServer((args.host, args.port), make_handler(conv, token, args.allow_origin))
     port = httpd.server_address[1]
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     gpu = conv.gpu

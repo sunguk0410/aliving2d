@@ -19,7 +19,8 @@
 | `engine/animator.js` | 파라미터 층 관리: 기본값 → 표정 → 대기 동작 → 모션 → 깜빡임, 말하기 |
 | `engine/player.js` | 브라우저 플레이어 (`CapsulePlayer`). WebGL 렌더링, 칸 맞춤, 캡슐용 API |
 | `engine/bundle.js` | 묶음 쓰기 (rig.json 생성, 무손실 PNG, ZIP). 편집기와 CLI 공용 |
-| `engine/reactions.default.json` | 기본 표정 8개, 모션 9개, 반응표 7종 |
+| `engine/tracking.js` | 카메라 손 추적 → 팔 값 (`CapsuleTracking`). 얼굴 상자 + 손목 점이면 어떤 검출기든 됨 |
+| `engine/reactions.default.json` | 기본 표정 18개, 모션 12개(손 흔들기·만세·턱 괴기 포함), 반응표 7종 |
 | `engine/demo/` | 스터디룸 데모(`index.html?bundles=a,b`), 표정 시트(`sheet.html`), 모션 필름(`film.html`), 팔 리깅 대시보드(`arms.html?b=sampleA`) |
 | `tools/build-bundle.js` | PSD → 묶음 CLI |
 | `lib/` | 편집기와 리거 (`rigger.js`, `renderer.js`, `runtime.js` 등). 플레이어도 `lib/runtime.js`, `lib/renderer.js`를 씀 |
@@ -96,19 +97,53 @@ bundles/chaerin/
 ### 팔 리그
 
 - 리거가 `handwear`를 좌우(`handwear_l`/`handwear_r`, 화면 기준 왼쪽이 L)로 나누고 `anchors.armL`/`armR`에 `{shoulder, elbow, wrist, width, cut, elbowBy}`를 넣습니다. 팔이 화면 밖으로 잘리면 `cut: true`이고 손목은 추정값입니다. 손은 만들지 않습니다.
-- `handwear`에 몸통까지 들어 있는 PSD(가운데 띠에 픽셀이 10% 넘게 있음)는 찢어지지 않게 팔 리그를 끄고 경고를 남깁니다.
+- `handwear`에 몸통까지 들어 있는 PSD(가운데 띠에 픽셀이 10% 넘게 있음)는 실루엣 안쪽 띠에서 팔과 몸 사이의 선(옷 주름·윤곽선)을 따라 팔을 잘라 냅니다(`carveArms`). 남은 부분은 `topwear` 파츠가 되고, 팔 뒤 몸통 옆면은 경계 색으로 조금 채웁니다. 잘라 낸 파츠는 `carved: true`. 잘라 내지 못하면 예전처럼 팔 리그를 끄고 경고를 남깁니다.
 - 파라미터 (모두 0이면 원본과 같은 결과):
   - FK: `armLShoulder`/`armRShoulder` 어깨 회전(도, + = 바깥으로 들기), `armLElbow`/`armRElbow` 팔꿈치(도, + = 몸 안쪽으로 굽힘)
   - IK: `armLX`/`armLY`, `armRX`/`armRY` 손목 목표 = 기본 손목 + (바깥, 위) × 팔 길이. 카메라 손 추적은 이 값을 넣으면 됩니다.
 - IK는 팔꿈치를 "두 뼈가 닿을 수 있는 영역 안에서 자연스러운 팔꿈치에 가장 가까운 점"에 둡니다. 닿지 않아 뼈가 짧아지면 카메라 쪽으로 향한 것으로 보고 원근으로 줄여 그립니다. 해가 하나라 팔꿈치가 튀지 않습니다.
 - 관절 보정 키: `anchorOffsets.armLShoulder|armLElbow|armLWrist`(R도 같음) `{dx, dy}`.
 
+### 카메라 손 추적 (`engine/tracking.js`)
+
+캡슐 프론트가 카메라로 사용자의 손목을 따라 할 때 쓰는 변환입니다. 편집기 「움직여 보기」의 카메라도 같은 코드를 씁니다 (MediaPipe FaceMesh + Hands).
+
+```js
+const arms = CapsuleTracking.createArmTracker();
+// 카메라 프레임마다: 좌표는 영상 그대로(좌우 반전 X), x에는 영상 가로세로비를 곱해 둠
+const face = CapsuleTracking.faceBoxFromMesh(faceLandmarks, aspect);          // {cx, cy, w, h}
+const hands = CapsuleTracking.wristsFromHands(handsResults, aspect);          // [{x, y, label, score}]
+arms.update({ face, hands }, performance.now() / 1000);
+// 그릴 때마다
+player.setParams(CapsuleTracking.armParams(player.model, arms.last));          // armLX/LY/RX/RY
+```
+
+- 거울 규칙: 사용자의 오른손(영상 왼쪽)이 아바타의 화면 왼쪽 팔(L)을 움직입니다. 얼굴 추적과 같습니다.
+- 사용자 몸 크기는 얼굴에서 추정합니다 (어깨 = 얼굴 중심에서 옆으로 1.4 얼굴 폭, 아래로 1 얼굴 높이 / 팔 길이 = 4 얼굴 폭). 손목의 "어깨 기준 위치 ÷ 팔 길이"를 아바타의 어깨·팔 길이에 그대로 옮깁니다.
+- 손이 사라지면 0.25초 기다렸다가 0.6초에 걸쳐 기본 자세로 돌아갑니다 (`presence`). 팔 관절이 없는 모델은 아무 값도 내지 않습니다.
+
+### 표정 파라미터
+
+모두 기본값 0이면 원본과 같은 결과입니다 (「움직여 보기」·「표정·모션」 탭 값이라 `settings`에 구워지지 않음).
+
+| 키 | 범위 | 뜻 |
+|---|---|---|
+| `eyeSmile` | 0..1 | 눈웃음: 뜬 눈은 아래 눈꺼풀이 호를 그리며 올라가고(흰자가 눈동자를 가림), 감은 눈은 ∩ 모양으로 휨 |
+| `mouthWide` | -1..1 | 입 너비 (+ 넓게, − 작고 둥글게. 벌린 입은 좁아지면 세로로 길어짐) |
+| `mouthTri` | -1..1 | 벌린 입 세모 (+ ▽, − △) |
+| `cheekPuff` | 0..1 | 볼 부풀리기 (얼굴 윤곽이 눈과 입 사이에서 바깥으로) |
+| `browAngSym` | -1..1 | (기존) + 화남(안쪽이 내려감), − 걱정·슬픔 |
+| `fxBlush` `fxSweat` `fxTears` `fxAnger` `fxGloom` | 0..1 | 효과 레이어 진하기: 홍조, 땀방울, 눈물, 화남 표시(💢), 그늘 세로선 |
+
+효과 레이어(`fade: "fx"`, `fx: "fxBlush"` …)는 리거가 얼굴·눈 기준점에 맞춰 그려 넣습니다(`synthetic: true`). PSD에 `sweat`/`땀`/`汗`, `tears`/`눈물`/`涙`, `anger`/`화남`, `gloom`/`그늘`/`縦線`, `blushfx`/`홍조`/`照れ` 이름의 레이어가 있으면 그림 대신 그 레이어를 씁니다. 땀은 미끄러져 내려오고, 눈물·그늘은 아래로 자라고, 💢는 튀어나오며 나타납니다.
+
 ## reactions.json 형식
 
 ```jsonc
 {
   "expressions": {                       // 유지되는 표정 = 파라미터 목표값
-    "pout": { "params": { "eyeOpenL": 0.7, "brow": -0.45, "mouthCForm": -1 },
+    "pout": { "label": "삐짐",            // 편집기에 보이는 이름 (선택)
+              "params": { "eyeOpenL": 0.7, "brow": -0.45, "mouthCForm": -1, "cheekPuff": 1 },
               "layers": { "blush": 1 } } // toggles에 있는 레이어 켜기 (선택)
   },
   "motions": {                           // 한 번 재생하는 동작 = 키프레임
@@ -141,6 +176,8 @@ bundles/chaerin/
 | 표정 / 모션 / 반응표 / 말하기 / 토글 레이어 추가 | 캡슐 상황 반응 |
 | **`mouthCForm`** (다문 입 휘기) 추가 | 원본은 다문 입 모양을 못 바꿔서 삐짐 입이 불가능했음. 기본값 0이면 원본과 동일 |
 | 입 레이어 메시 세분화 (최소 12×4) | 작은 입을 휠 때 가운데가 꺾이던 문제 |
+| 표정 파라미터 `eyeSmile`·`mouthWide`·`mouthTri`·`cheekPuff`, 효과 레이어 `fx*` | 눈웃음·세모 입·볼 부풀리기·홍조·땀·눈물·💢·그늘. 기본값 0이면 원본과 동일 |
+| 팔 리그 (FK + IK), 몸통에 섞인 팔 잘라 내기 | 손 흔들기·만세 같은 모션, 카메라 손 추적 |
 | 칸 맞춤 (`focus`, `scale`, `offset`) | 스터디룸 칸 크기에 맞추기 |
 
 `tests/equivalence.test.js`는 원본 `app.js`의 함수 원문(`tests/fixtures/upstream-deform.js`)을 같은 입력으로 돌리고, **모든 꼭짓점이 비트 단위로 같은지** 확인합니다(300프레임, 물리 포함). 엔진 수식을 고칠 때는 이 테스트가 통과하는지 꼭 보세요. 의도적인 확장은 `Core.EXTENSIONS`에 등록하고 기본값을 0으로 둡니다.

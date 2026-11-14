@@ -60,7 +60,9 @@ document.getElementById('run').addEventListener('click',async()=>{
     // ---- a picture without a conversion server explains the Colab flow ----
     function select(input,f){const dt=new w.DataTransfer();dt.items.add(f);input.files=dt.files;input.dispatchEvent(new w.Event('change'));}
     select($('fileInput'),new w.File([new Uint8Array([0x89,0x50,0x4e,0x47])],'art.png',{type:'image/png'}));
-    assert($('dropStatus').textContent.includes('Colab')&&$('stJob').hidden,'a picture without a server points to the Colab notebook');
+    await wait(()=>$('dropStatus').textContent.includes('Colab'),'picture message');
+    assert($('stJob').hidden&&$('upload').dataset.mode==='colab'&&!$('welcome').hidden,'a picture on a PC without the conversion tool points to the Colab notebook '+[$('stJob').hidden,$('upload').dataset.mode,$('welcome').hidden]);
+    assert(d.body.classList.contains('welcome')&&getComputedStyle($('panel')).display==='none','the side panel waits until a model is open');
 
     // ---- synthetic PSD: two eyes, red/blue irises, Japanese and hostile names ----
     function part(name,left,top,width,height,color){const data=new w.Uint8ClampedArray(width*height*4);for(let i=0;i<data.length;i+=4)data.set(color,i);return{name,left,top,right:left+width,bottom:top+height,imageData:{width,height,data}};}
@@ -79,7 +81,7 @@ document.getElementById('run').addEventListener('click',async()=>{
     assert(S().tab==='tune'&&!d.querySelector('[data-pane="tune"]').hidden&&d.querySelector('[data-pane="play"]').hidden,'tabs switch panes');
     key('ArrowRight',{},d.querySelector('.tab[data-tab="tune"]'));
     assert(S().tab==='layers','arrow keys move between tabs');
-    assert(d.querySelectorAll('[data-pane="tune"] input[type=range]').length>=17&&d.querySelectorAll('[data-pane="play"] input[type=range]').length>=26,'pose and tuning sliders are generated');
+    assert(d.querySelectorAll('[data-pane="tune"] input[type=range]').length>=17&&d.querySelectorAll('[data-pane="play"] input[type=range]').length>=37&&d.querySelectorAll('[data-pane="tune"] .row-hint').length===18,'pose/expression and tuning sliders are generated; tuning sliders explain themselves');
 
     // ---- auto-save per model ----
     click('btnPause');
@@ -111,7 +113,35 @@ document.getElementById('run').addEventListener('click',async()=>{
     key('2');assert(S().activePreset==='smile'&&d.querySelector('[data-preset="smile"]').classList.contains('active'),'key 2 applies the smile expression');
     key('2');assert(S().activePreset===null,'pressing it again clears it');
     key('6');key('0');assert(S().activePreset===null,'key 0 clears an expression');
-    key('3');key('3',{repeat:true});key('3',{repeat:true});assert(S().activePreset==='usume','holding an expression key does not toggle it repeatedly');key('0');
+    key('3');key('3',{repeat:true});key('3',{repeat:true});assert(S().activePreset==='grin','holding an expression key does not toggle it repeatedly');key('0');
+    assert(d.querySelectorAll('#exprList [data-preset]').length>=18&&d.querySelectorAll('#motionList [data-motion]').length>=12,'expressions and motions come from reactions.default.json');
+
+    // ---- expression & motion editing (reactions.json per model) ----
+    {
+      const rkey='capsule.reactions.'+S().modelId;
+      key('2');setValue('fxBlush',0.8);
+      assert(S().activePreset===null,'touching a slider leaves the held expression');
+      $('exprLabel').value='수줍은 웃음';click('btnExprNew');
+      await wait(()=>h.memory.has(rkey),'reactions auto-save');
+      const saved=JSON.parse(h.memory.get(rkey)).expressions.custom1;
+      assert(saved&&saved.label==='수줍은 웃음'&&saved.params.fxBlush===0.8&&saved.params.eyeSmile===1&&!('angleX' in saved.params&&saved.params.angleX===0),'「새 표정으로 저장」 stores the slider face (only values that differ)');
+      assert(d.querySelector('#exprList [data-preset="custom1"]').classList.contains('active'),'the new expression is listed and active');
+      key('0');
+      const motions=()=>JSON.parse(h.memory.get(rkey)).motions;
+      click('btnMotionNew');const mname=Object.keys(motions()).find(n=>n.startsWith('motion'));
+      setValue('angleX',0.5);$('motionKeyTime').value='0';click('btnMotionKey');
+      setValue('angleX',-0.5);$('motionKeyTime').value='600';click('btnMotionKey');
+      assert(JSON.stringify(motions()[mname].tracks.angleX)==='[[0,0.5],[600,-0.5]]'&&d.querySelectorAll('#motionKeys li').length===2,'motion keys record the slider pose as offsets');
+      setValue('angleX',0);
+      click('btnMotionPlay');assert($('appStatus').textContent.includes('모션 재생'),'a motion plays in the preview');
+      const n=h.blobs.length;click('btnReactionsSave');
+      const file=JSON.parse(await h.blobs.at(-1).text());
+      assert(h.blobs.length===n+1&&file.format==='capsule-reactions'&&file.expressions.custom1&&file.motions[mname],'reactions.json download contains the edits');
+      $('reactionsText').value='{"expressions":{"only":{"params":{"brow":1}}}}';click('btnReactionsApply');
+      assert(d.querySelectorAll('#exprList [data-preset]').length===2&&JSON.parse(h.memory.get(rkey)).expressions.only,'hand-edited JSON is validated and applied');
+      w.confirm=()=>true;click('btnReactionsReset');
+      assert(d.querySelectorAll('#exprList [data-preset]').length>=18,'reset brings the default set back');
+    }
 
     // ---- anchor editing ----
     key('e');await settle();
@@ -139,7 +169,8 @@ document.getElementById('run').addEventListener('click',async()=>{
     // ---- capsule bundle export ----
     {const n=h.blobs.length;click('btnExportBundle');await wait(()=>h.blobs.length>n&&h.blobs.at(-1).type==='application/zip','bundle export',30000);
       const zip=new Uint8Array(await h.blobs.at(-1).arrayBuffer());
-      assert(zip[0]===0x50&&zip[1]===0x4b&&new TextDecoder().decode(zip).includes('rig.json'),'「캡슐 모델 내보내기」 produces a ZIP with rig.json');}
+      const text=new TextDecoder().decode(zip);
+      assert(zip[0]===0x50&&zip[1]===0x4b&&text.includes('rig.json')&&text.includes('"capsule-reactions"')&&text.includes('fx_blush'),'「캡슐 모델 내보내기」 produces a ZIP with rig.json, effect parts and reactions.json');}
 
     // ---- rendering: iris clipping (read the preview canvas) ----
     click('btnResetAll');click('btnPause');
