@@ -7,7 +7,7 @@
   "scripts": {
     "start": "python serve.py --port 8000",
     "test": "npm run test:node && npm run test:python",
-    "test:node": "node tests/rigger.test.js && node tests/runtime.test.js && node tests/face-features.test.js && node tests/psd.test.js && node tests/equivalence.test.js && node tests/arms.test.js && node tests/animator.test.js && node tests/expressions.test.js && node tests/tracking.test.js && node tests/bundle.test.js",
+    "test:node": "node tests/rigger.test.js && node tests/runtime.test.js && node tests/face-features.test.js && node tests/psd.test.js && node tests/equivalence.test.js && node tests/arms.test.js && node tests/animator.test.js && node tests/expressions.test.js && node tests/tracking.test.js && node tests/mouth.test.js && node tests/bundle.test.js",
     "test:python": "python -m unittest discover -s tests -p \"test_*.py\"",
     "test:browser": "node tests/run-browser.js",
     "test:player": "node tests/capsule-browser.smoke.js",

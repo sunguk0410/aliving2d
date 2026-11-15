@@ -15,3 +15,6 @@ seethrough_jobs/
 
 # OpenAI API key for 「AI로 자세 바로잡기」 (seethrough/redraw.py)
 .local/
+
+# v2 model bundles (character art)
+v2/bundles/

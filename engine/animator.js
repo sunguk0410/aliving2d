@@ -47,6 +47,19 @@
     return list[list.length - 1];
   }
 
+  /**
+   * Character style on top of an expression's params: with smileEyes < 1 a smiling expression
+   * (eyeSmile > 0, both eyes alike - not a wink) narrows the eyes instead of closing them.
+   * Same rule in the editor (lib/app.js applyExpression). Returns a new object.
+   */
+  function styleExpression(params, tuning) {
+    const s = tuning && tuning.smileEyes != null ? tuning.smileEyes : 1, p = Object.assign({}, params);
+    if (s >= 1 || !(p.eyeSmile > 0) || p.eyeOpenL == null || p.eyeOpenR == null || Math.abs(p.eyeOpenL - p.eyeOpenR) > 0.3) return p;
+    const floor = 0.6 * (1 - s);
+    p.eyeOpenL = Math.max(p.eyeOpenL, floor); p.eyeOpenR = Math.max(p.eyeOpenR, floor);
+    return p;
+  }
+
   function createAnimator(model, reactions, opts) {
     opts = opts || {};
     const rand = opts.random || Math.random;
@@ -131,7 +144,7 @@
 
       if (expression && now >= expressionUntil) { expression = null; if (thenExpression) { const n = thenExpression; thenExpression = null; setExpression(n, 1500); } }
       const activeExpr = expression || baseExpression;
-      const tgt = Object.assign({}, base, exprParams(activeExpr));
+      const tgt = Object.assign({}, base, styleExpression(exprParams(activeExpr), base));
 
       // expression-driven toggle layers (e.g. "layers": {"blush": 1})
       const wantLayers = exprLayers(activeExpr);
@@ -251,5 +264,5 @@
     };
   }
 
-  return { createAnimator, sampleTrack, EASE };
+  return { createAnimator, styleExpression, sampleTrack, EASE };
 });

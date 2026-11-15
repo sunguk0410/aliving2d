@@ -103,4 +103,25 @@ for (const [trig, list] of Object.entries(R.reactions)) for (const x of list) {
 for (const [name, x] of Object.entries(R.expressions)) for (const k in x.params) assert.ok(k in Core.DEFAULTS, name + ': unknown param ' + k);
 for (const [name, m] of Object.entries(R.motions)) for (const k in m.tracks) assert.ok(k in Core.DEFAULTS, name + ': unknown track ' + k);
 
+// character smile style: smileEyes narrows a smile instead of closing it; winks and non-smiles untouched
+{
+  const { styleExpression } = require('../engine/animator.js');
+  const smile = R.expressions.smile.params;
+  assert.deepStrictEqual(styleExpression(smile, { smileEyes: 1 }), smile, 'smileEyes 1 = as authored');
+  const calm = styleExpression(smile, { smileEyes: 0.25 });
+  assert.ok(Math.abs(calm.eyeOpenL - 0.45) < 1e-9 && calm.eyeOpenR === calm.eyeOpenL && calm.eyeSmile === smile.eyeSmile, 'calm smile narrows the eyes');
+  assert.strictEqual(styleExpression(R.expressions.winkL.params, { smileEyes: 0 }).eyeOpenL, 0, 'a wink stays a wink');
+  assert.strictEqual(styleExpression(R.expressions.yawn.params, { smileEyes: 0 }).eyeOpenL, 0, 'no eyeSmile: unchanged');
+  assert.strictEqual(styleExpression(R.expressions.softSmile.params, { smileEyes: 0 }).eyeOpenL, R.expressions.softSmile.params.eyeOpenL, 'already open enough');
+  // the animator applies it from the model settings
+  const anim = createAnimator(Core.createModel(rig), R, { settings: { smileEyes: 0.25 }, auto: { idle: false, rand: false, blink: false } });
+  anim.setExpression('smile');
+  let e; for (let i = 0; i < 240; i++) e = anim.update(1 / 60);
+  assert.ok(e.eyeOpenL > 0.4 && e.eyeOpenL < 0.5, 'animator: calm smile eyes ' + e.eyeOpenL);
+  // narrow eyes -> calm, round eyes -> ^ ^
+  const eyeRig = (h) => ({ layers: [], anchors: { eyeL: { x0: 0, x1: 40, y0: 0, y1: h, icx: 20, icy: h / 2, closeY: h / 2 }, eyeR: { x0: 60, x1: 100, y0: 0, y1: h, icx: 80, icy: h / 2, closeY: h / 2 } } });
+  assert.ok(Core.characterDefaults(eyeRig(16)).smileEyes < 0.4, 'long narrow eyes');
+  assert.strictEqual(Core.characterDefaults(eyeRig(30)).smileEyes, 1, 'round eyes');
+}
+
 console.log('ok animator');

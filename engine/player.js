@@ -32,7 +32,7 @@
 
   class CapsulePlayer {
     /**
-     * opts: {scale=1, offsetX=0, offsetY=0 (CSS px), focus='upper'|'full'|'face',
+     * opts: {scale=1, offsetX=0, offsetY=0 (CSS px), focus='upper'|'full'|'face'|'mouth',
      *        pixelRatio, maxPixels, auto:{idle,blink,rand,phys}, liveliness, reactions (object or url),
      *        autoplay=true}
      */
@@ -88,6 +88,8 @@
       const fh = A.face.y1 - A.face.y0;
       let box;
       if (this.opts.focus === 'face') box = { cx: A.face.cx, cy: A.face.cy, h: fh * 2.2, w: fh * 2.2 };
+      else if (this.opts.focus === 'mouth' && A.mouth) box = { cx: A.mouth.cx, cy: A.mouth.cy, h: fh * 0.5, w: fh * 0.5 };
+      else if (this.opts.focus === 'neck') box = { cx: A.face.cx, cy: A.face.y1 + fh * 0.35, h: fh * 1.1, w: fh * 1.1 };
       else if (this.opts.focus === 'upper') box = { cx: A.face.cx, cy: A.face.y0 + fh * 1.45, h: fh * 3.4, w: fh * 2.9 };
       else box = { cx: CW / 2, cy: CH / 2, h: CH, w: CW };
       const s = Math.min(h / box.h, w / box.w) * this.opts.scale;

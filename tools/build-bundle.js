@@ -92,8 +92,8 @@ function build(input, outDir, opts) {
   const bundle = Bundle.buildManifest(rig, {
     source: { file: path.basename(input), fingerprint: RT.fingerprint(ab), tool: 'build-bundle' },
     layerState: edit.layerState, anchorOffsets: edit.anchorOffsets, cleanup: pre,
-    // models with skin eyelids close their eyes with them by default (editor does the same)
-    settings: Object.assign(rig.layers.some(L => L.fade === 'eyeLid') ? { eyeLid: 1 } : {}, edit.settings || {})
+    // per-character starting values (eyelids, rigged mouth, strand variety, smile style): same as the editor
+    settings: Object.assign(Core.characterDefaults(rig), edit.settings || {})
   });
   const deflate = raw => zlib.deflateSync(raw, { level: 9 });
   const byZ = new Map(rig.layers.map(L => [L.z, L]));

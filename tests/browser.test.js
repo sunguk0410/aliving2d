@@ -81,7 +81,7 @@ document.getElementById('run').addEventListener('click',async()=>{
     assert(S().tab==='tune'&&!d.querySelector('[data-pane="tune"]').hidden&&d.querySelector('[data-pane="play"]').hidden,'tabs switch panes');
     key('ArrowRight',{},d.querySelector('.tab[data-tab="tune"]'));
     assert(S().tab==='layers','arrow keys move between tabs');
-    assert(d.querySelectorAll('[data-pane="tune"] input[type=range]').length>=17&&d.querySelectorAll('[data-pane="play"] input[type=range]').length>=37&&d.querySelectorAll('[data-pane="tune"] .row-hint').length===18,'pose/expression and tuning sliders are generated; tuning sliders explain themselves');
+    assert(d.querySelectorAll('[data-pane="tune"] input[type=range]').length>=17&&d.querySelectorAll('[data-pane="play"] input[type=range]').length>=37&&d.querySelectorAll('[data-pane="tune"] .row-hint').length===21,'pose/expression and tuning sliders are generated; tuning sliders explain themselves');
 
     // ---- auto-save per model ----
     click('btnPause');

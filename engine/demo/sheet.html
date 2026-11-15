@@ -4,11 +4,14 @@
 (async()=>{
  const q=new URLSearchParams(location.search), bundle=q.get('b')||'sampleA';
  const R=await (await fetch('../../bundles/'+bundle+'/reactions.json')).json();
- const names=(q.get('only')||Object.keys(R.expressions).join(',')).split(','); document.body.style.setProperty('--s',(q.get('px')||180)+'px');
- for(const n of names){
+ // ?sets=[["label",{params}],...] shows raw parameter values instead of named expressions
+ const sets=q.get('sets')?JSON.parse(q.get('sets')):null;
+ const names=sets?sets.map(s=>s[0]):(q.get('only')||Object.keys(R.expressions).join(',')).split(','); document.body.style.setProperty('--s',(q.get('px')||180)+'px');
+ if(q.get('cols'))document.getElementById('g').style.gridTemplateColumns='repeat('+q.get('cols')+',var(--s,180px))';
+ for(const [i,n] of names.entries()){
   const d=document.createElement('div');d.className='c';d.innerHTML='<canvas></canvas><div>'+n+'</div>';g.appendChild(d);
-  const p=await CapsulePlayer.load(d.querySelector('canvas'),'../../bundles/'+bundle+'/',{focus:'face',scale:Number(q.get('z')||1),autoplay:false,auto:{idle:false,rand:false,blink:false},pixelRatio:1});
-  p.setExpression(n); for(let i=0;i<60;i++)p.step(1/60);
+  const p=await CapsulePlayer.load(d.querySelector('canvas'),'../../bundles/'+bundle+'/',{focus:q.get('focus')||'face',scale:Number(q.get('z')||1),autoplay:false,auto:{idle:false,rand:false,blink:false},pixelRatio:1});
+  if(sets)p.setParams(sets[i][1]);else p.setExpression(n); for(let k=0;k<60;k++)p.step(1/60);
  }
  window.__done=true;
 })();

@@ -91,8 +91,32 @@ for (const [raw, expected] of Object.entries(aliasCases)) assert.strictEqual(Rig
 // Plain "hair" is front hair above the face and back hair below it.
 const hairRig = Rigger.buildRig({ width: 200, height: 200, children: [
   solidLayer('hair', 40, 10, 120, 170), solidLayer('face', 60, 30, 80, 90), solidLayer('hair', 50, 20, 100, 40)
-] });
+] }, { hairLocks: false });
 assert.deepStrictEqual(hairRig.layers.filter(l => !l.fx).map(l => l.name), ['back hair', 'face', 'front hair']);
+
+// Bangs are cut into locks at the gaps between their tips, along the dark shadow lines; together the
+// pieces cover the whole layer (2 px shared along each cut, nothing lost)
+{
+  const W = 240, H = 160, bangs = { name: 'front hair', left: 0, top: 0, imageData: { width: W, height: H, data: new Uint8ClampedArray(W * H * 4) } };
+  const tip = x => 60 + 60 * Math.abs(Math.sin(Math.PI * (x - 20) / 50));   // four locks, gaps at x = 70, 120, 170
+  for (let y = 10; y < H; y++) for (let x = 20; x < 220; x++) {
+    if (y > tip(x)) continue;
+    const o = (y * W + x) * 4, dark = [70, 120, 170].some(g => Math.abs(x - g) < 2);
+    bangs.imageData.data.set(dark ? [90, 60, 40, 255] : [230, 200, 150, 255], o);
+  }
+  const rig = Rigger.buildRig({ width: W, height: H, children: [solidLayer('face', 60, 20, 120, 120), bangs] });
+  const locks = rig.layers.filter(l => /^front hair_\d+$/.test(l.name));
+  assert.ok(locks.length >= 4 && locks.length <= 6, 'bangs split into locks: ' + locks.map(l => l.name));
+  assert.ok(locks.every(l => l.phys === 'hair' && l.strands && l.strands.length), 'every lock has its own springs');
+  for (let i = 1; i < locks.length; i++) assert.ok(locks[i].x > locks[i - 1].x, 'locks left to right');
+  const cover = new Uint8Array(W * H);
+  for (const l of locks) for (let y = 0; y < l.h; y++) for (let x = 0; x < l.w; x++) if (l.img.data[(y * l.w + x) * 4 + 3] > 0) cover[(y + l.y) * W + x + l.x] = 1;
+  let missing = 0;
+  for (let y = 10; y < H; y++) for (let x = 20; x < 220; x++) if (y <= tip(x) && !cover[y * W + x]) missing++;
+  assert.strictEqual(missing, 0, 'no hair pixel lost between locks');
+  const cutsNearGaps = locks.slice(1).map(l => l.x + 2);
+  assert.ok([70, 120, 170].every(g => cutsNearGaps.some(x => Math.abs(x - g) <= 8)), 'every gap between locks is a cut: ' + cutsNearGaps);
+}
 assert.ok(hairRig.layers.find(l => l.name === 'front hair').strands.length > 0, 'front hair gets strands');
 assert.strictEqual(hairRig.layers.find(l => l.name === 'face').source, 'face');
 
@@ -133,7 +157,7 @@ assert.strictEqual(Rigger.roleLabel('front hair'), '앞머리');
   const kids = [solidLayer('face', 40, 30, 120, 140), solidLayer('irides', 60, 80, 20, 12), solidLayer('irides', 120, 80, 20, 12),
     solidLayer('eyelash', 55, 75, 30, 10), solidLayer('eyelash', 115, 75, 30, 10), solidLayer('eyewhite', 58, 78, 24, 14), solidLayer('eyewhite', 118, 78, 24, 14),
     solidLayer('front hair', 40, 20, 120, 40)];
-  const r = Rigger.buildRig({ width: 200, height: 200, children: kids }, { fx: false });
+  const r = Rigger.buildRig({ width: 200, height: 200, children: kids }, { fx: false, hairLocks: false });
   const names = r.layers.map(l => l.name);
   const at = n => names.indexOf(n);
   assert.ok(at('eyewhite_l') < at('irides_l') && at('irides_l') < at('eyelash_l') && at('eyewhite_r') < at('irides_r'), names.join(','));

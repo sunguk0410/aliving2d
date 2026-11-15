@@ -135,6 +135,35 @@ player.setParams(CapsuleTracking.armParams(player.model, arms.last));          /
 | `browAngSym` | -1..1 | (기존) + 화남(안쪽이 내려감), − 걱정·슬픔 |
 | `fxBlush` `fxSweat` `fxTears` `fxAnger` `fxGloom` | 0..1 | 효과 레이어 진하기: 홍조, 땀방울, 눈물, 화남 표시(💢), 그늘 세로선 |
 
+### 머리카락 다발·가닥 (`hairVar`)
+
+리거가 앞머리·뒷머리를 다발마다 레이어로 자릅니다(`front hair_1`, `front hair_2`…, `lock` 번호). 다발 끝 사이의 틈과 그림의 어두운 결을 따라 자르고, 이웃 조각과 2px 겹쳐서 가만히 있을 때는 이음새가 없습니다. 조각마다 스프링이 따로라 다발끼리 엇갈려 움직입니다.
+
+
+리거가 머리 레이어마다 가닥(`strands`)을 앞머리 약 30px, 뒷머리 약 42px마다 하나씩 잡습니다. `hairVar` 1(편집기·`build-bundle` 기본)이면 가닥마다 스프링 세기와 흔들리는 폭이 조금씩 달라 한 덩어리로 움직이지 않습니다. 0이면 모든 가닥이 똑같이 흔들립니다(원본).
+
+### 웃는 눈 (`smileEyes`)
+
+캐릭터 조정값입니다. 1이면 표정 그대로(웃음 = ^ ^), 낮을수록 웃는 표정(`eyeSmile` > 0, 두 눈이 비슷한 것만 — 윙크 제외)에서 눈을 덜 감습니다: `eyeOpen = max(표정 값, 0.6 × (1 − smileEyes))`. 플레이어는 `CapsuleAnimator.styleExpression`으로 표정 목표값에 적용합니다. 처음 값은 `Core.characterDefaults`가 눈의 세로/가로 비율로 정합니다(가는 눈 0.25 … 동그란 눈 1).
+
+### 입 파츠 (`mouthRig`)
+
+리거가 see-through의 입 레이어 하나를 움직일 수 있는 파츠로 나눕니다 (`fade: "mouthRig"`, `anchors.mouthRig`).
+
+| 레이어 | 내용 | 움직임 |
+|---|---|---|
+| `mouth_inner` | 입 안 (이·혀를 자르는 마스크도 겸함, 렌더러 파란 채널) | 윗입술에서 아래로 벌어짐 |
+| `mouth_teeth` | 윗니 | 윗입술을 따라감 |
+| `mouth_tongue` | 혀 | 입 안 바닥을 따라감 |
+| `mouth_lip_lower` | 아랫입술 선 | 입 안 바닥을 따라감, 조금 벌어지면 나타남 |
+| `mouth_lip_upper` | 윗입술 선 (캐릭터가 그린 다문 입 선) | 웃음·찡그림(`mouthForm`, `mouthCForm`)으로 휨 |
+
+- 입이 선으로 그려진 그림(`mode: "line"`)은 입 안·이·혀·아랫입술을 캐릭터의 선 색과 피부색으로 그려 넣습니다.
+- 입을 벌린 채 그려진 그림(`mode: "art"`)은 그 그림을 그대로 입 안으로 쓰고(이·혀가 이미 있음), 다문 입 선만 그려 넣습니다. 닫히면 위쪽 호가 펴져서 찡그린 입처럼 보이지 않습니다.
+- 기하: 윗입술 `top0(x) = cy + b·q + s·q²` (`q = (x − cx) / hw`), 다 벌린 입 안 바닥 `top0 + D·(1 − ((x − cx) / iw)²)^0.6`. 리거와 엔진이 같은 식을 씁니다.
+- 웃으면(`mouthForm`/`mouthCForm` > 0) 입이 넓어지고 조금 더 높게 벌어집니다. 휘는 정도는 입 크기에 비례합니다.
+- `mouthRig` 1(그린 입 모양이 없는 모델의 편집기·`build-bundle` 기본)이면 그린 입 모양(`mouth_open`/`close`/`grin`/`o`/`smile`)은 숨고 이 파츠들이 `mouthOpen`·`mouthForm`·`mouthWide`·`mouthTri`로 이어서 움직입니다. 0이면 예전처럼 그림을 바꿔 끼웁니다.
+
 효과 레이어(`fade: "fx"`, `fx: "fxBlush"` …)는 리거가 얼굴·눈 기준점에 맞춰 그려 넣습니다(`synthetic: true`). PSD에 `sweat`/`땀`/`汗`, `tears`/`눈물`/`涙`, `anger`/`화남`, `gloom`/`그늘`/`縦線`, `blushfx`/`홍조`/`照れ` 이름의 레이어가 있으면 그림 대신 그 레이어를 씁니다. 땀은 미끄러져 내려오고, 눈물·그늘은 아래로 자라고, 💢는 튀어나오며 나타납니다.
 
 ## reactions.json 형식

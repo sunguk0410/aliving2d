@@ -32,6 +32,13 @@
     eyeSmile: 0, mouthWide: 0, mouthTri: 0, cheekPuff: 0,
     // 1 = close the eyes with the skin eyelid (Rigger 'eye_lid' layers) instead of swapping pictures
     eyeLid: 0,
+    // 1 = open the mouth with the rigged mouth parts (Rigger 'mouth_inner' ... layers) instead of swapping pictures
+    mouthRig: 0,
+    // hair: 1 = every strand gets its own stiffness and reach, so locks sway out of step (0 = all in step, upstream)
+    hairVar: 0,
+    // how far a smile closes the eyes: 1 = as the expression says (^ ^), lower = the eyes only narrow
+    // (calm / cool characters). Applied to expression targets (CapsuleAnimator.styleExpression), not here
+    smileEyes: 1,
     // effect layers (Rigger synthesizes them; 0 = hidden)
     fxBlush: 0, fxSweat: 0, fxTears: 0, fxAnger: 0, fxGloom: 0,
     // drawn arm poses with props (seethrough/pose_art.py): 1 = that pose's arms instead of the rigged ones;
@@ -47,7 +54,9 @@
   const POSE_ART_KEYS = ['poseTyping', 'poseWriting', 'poseWave', 'poseSwing'];
   const POSES = { typing: 'poseTyping', writing: 'poseWriting', wave: 'poseWave' };
   const LOWER_BODY = { bottomwear: 1, legwear: 1, footwear: 1 };
-  const EXTENSIONS = ['mouthCForm', 'eyeLid'].concat(FACE_KEYS, FX_KEYS, POSE_ART_KEYS, ARM_KEYS);
+  // capsule: rigged mouth parts (Rigger synthMouth) and what each one rides on
+  const MOUTH_RIG = { mouth_inner: 'inner', mouth_teeth: 'top', mouth_tongue: 'bottom', mouth_lip_lower: 'bottom', mouth_lip_upper: 'top' };
+  const EXTENSIONS = ['mouthCForm', 'eyeLid', 'mouthRig', 'hairVar', 'smileEyes'].concat(FACE_KEYS, FX_KEYS, POSE_ART_KEYS, ARM_KEYS);
   const RANGES = {
     angleX: [-1, 1], angleY: [-1, 1], angleZ: [-1, 1], eyeOpenL: [0, 1], eyeOpenR: [0, 1], eyeX: [-1, 1], eyeY: [-1, 1],
     irisScale: [0.5, 1.3], eyeScaleL: [0.5, 1.5], eyeScaleR: [0.5, 1.5], eyeEase: [0, 1], eyeCY: [-1, 1], eyeCAng: [-1, 1],
@@ -56,7 +65,7 @@
     bangL: [-1, 1], bangC: [-1, 1], bangR: [-1, 1], body: [-1, 1], armY: [-1, 1], armPos: [-1, 1], bust: [0, 4],
     bustY: [-3, 3], physAmp: [0, 3], soft: [0, 3], accAmp: [0, 3],
     mouthCForm: [-1, 1],
-    eyeSmile: [0, 1], mouthWide: [-1, 1], mouthTri: [-1, 1], cheekPuff: [0, 1], eyeLid: [0, 1],
+    eyeSmile: [0, 1], mouthWide: [-1, 1], mouthTri: [-1, 1], cheekPuff: [0, 1], eyeLid: [0, 1], mouthRig: [0, 1], hairVar: [0, 1], smileEyes: [0, 1],
     fxBlush: [0, 1], fxSweat: [0, 1], fxTears: [0, 1], fxAnger: [0, 1], fxGloom: [0, 1],
     poseTyping: [0, 1], poseWriting: [0, 1], poseWave: [0, 1], poseSwing: [-1, 1],
     armLShoulder: [-90, 180], armRShoulder: [-90, 180], armLElbow: [-60, 160], armRElbow: [-60, 160],
@@ -80,6 +89,7 @@
       let { nx, ny } = RT.meshSize(L.w, L.h, cell);
       // capsule: mouths are tiny, so give them enough columns to bend smoothly
       if (L.bn === 'mouth_open' || L.bn === 'mouth_close') { nx = Math.max(nx, 12); ny = Math.max(ny, 4); }
+      if (MOUTH_RIG[L.bn]) { nx = Math.max(nx, 16); ny = Math.max(ny, L.bn === 'mouth_inner' ? 10 : 6); }
       // capsule: the eyelid unrolls column by column and the lashes follow it
       if (L.bn === 'eye_lid' || L.bn === 'eyelash' || L.bn === 'eyelash_lower') { nx = Math.max(nx, 14); ny = Math.max(ny, 8); }
       // capsule: rigged arms bend at the elbow, so they need rows along their length
@@ -101,7 +111,9 @@
         if (nS > 1) { const ds = []; for (let s = 1; s < nS; s++) ds.push(S[s].x - S[s - 1].x); ds.sort((a, b) => a - b); spacing = ds[ds.length >> 1]; }
         const sig = Math.max(1, spacing * 0.6);
         L.sw = new Float32Array(nv * nS); L.su = new Float32Array(nv);
-        L.spr = S.map((s, i) => ({ stiff: { x: 0, v: 0, dx: 0 }, soft: { x: 0, v: 0, dx: 0 }, phase: i * 1.37 + L.z }));
+        L.spr = S.map((s, i) => ({ stiff: { x: 0, v: 0, dx: 0 }, soft: { x: 0, v: 0, dx: 0 }, phase: i * 1.37 + L.z,
+          // capsule (hairVar): a fixed -1..1 per strand, neighbours differ
+          vr: Math.sin(i * 2.399 + L.z * 0.7 + 0.5) }));
         for (let v = 0; v < nv; v++) {
           const x = base[v * 2], y = base[v * 2 + 1]; let tot = 0;
           for (let s = 0; s < nS; s++) { const w = Math.exp(-Math.pow((x - S[s].x) / sig, 2)); L.sw[v * nS + s] = w; tot += w; }
@@ -128,6 +140,7 @@
       poseKeys: [...new Set(layers.filter(L => L.pose && POSES[L.pose]).map(L => POSES[L.pose]))],
       hasLid: layers.some(L => L.fade === 'eyeLid'),
       hasLowerLash: layers.some(L => L.bn === 'eyelash_lower'),
+      hasMouthRig: !!(rig.anchors && rig.anchors.mouthRig) && layers.some(L => L.fade === 'mouthRig'),
       blinkVariant: 1,
       physics: true
     };
@@ -148,6 +161,7 @@
     a.face.cx += off('face').dx || 0; a.face.cy += off('face').dy || 0;
     for (const s of ['L', 'R']) { const e = a['eye' + s]; if (!e) continue; e.icx += off('eye' + s).dx || 0; e.icy += off('eye' + s).dy || 0; e.closeY += off('eye' + s + 'Close').dy || 0; }
     const m = off('mouth'); for (const k of ['cx', 'x0', 'x1']) a.mouth[k] += m.dx || 0; for (const k of ['cy', 'y0', 'y1']) a.mouth[k] += m.dy || 0;
+    if (a.mouthRig) { a.mouthRig.cx += m.dx || 0; a.mouthRig.cy += m.dy || 0; }
     a.neckPivot.cx += off('neck').dx || 0; a.neckPivot.cy += off('neck').dy || 0;
     M.A = a; M.FS = a.faceScale; M.NP = a.neckPivot; M.BP = a.bodyPivot; M.FC = { x: a.face.cx, y: a.face.cy };
     const ch = off('chest'), fh = a.face.y1 - a.face.y0;
@@ -294,6 +308,36 @@
     return 'open';
   }
 
+  // capsule: rigged mouth. o = how open (0..1). The upper lip runs along top(x) (the drawn line bent by
+  // mouthForm / mouthCForm, lifted a little as the jaw drops); the cavity scales down from it, the teeth
+  // ride on it, the tongue and the lower lip ride on the bottom of the cavity.
+  function mouthOpenAmount(e) { return clamp((e.mouthOpen - 0.02) / 0.98, 0, 1); }
+  function mouthRigPoint(MR, e, FS, role, x, y) {
+    const o = mouthOpenAmount(e), so = smooth(o / 0.25);
+    const q = clamp((x - MR.cx) / MR.hw, -1.3, 1.3);
+    const top0 = MR.cy + MR.b * q + MR.s * q * q;
+    // smile (+) / frown (-): closed mouths follow mouthCForm, open ones mouthForm. Sized by the mouth itself
+    // (small drawn mouths need it), and a smile also widens the mouth and opens it a little taller
+    const form = e.mouthCForm * (1 - so) + e.mouthForm * so, smile = Math.max(0, form);
+    const bend = form * MR.hw * 0.42;
+    // open art (mode 'art') arches along its top edge; closed, that arch would read as a frown, so it
+    // flattens. Its upper lip line is painted flat (Rigger) and rides on the closed curve.
+    const flat0 = MR.mode === 'art' ? 0.85 * MR.s * (q * q - 0.35) : 0;
+    const top = top0 - (1 - so) * flat0 - bend * (Math.pow(Math.abs(q), 1.5) - 0.35) - o * MR.D * 0.05;
+    const hs = (1 - 0.25 * e.mouthWide) * (1 + 0.2 * smile * so);   // a narrow (o) mouth gets taller, a wide one flatter
+    const qi = (x - MR.cx) / MR.iw, dep0 = MR.D * Math.pow(Math.max(0, 1 - qi * qi), 0.6);
+    let ny;
+    if (role === 'top') ny = y - (top0 - flat0) + top;
+    else if (role === 'bottom') ny = y - dep0 - top0 + top + dep0 * o * hs;
+    else ny = top + (y - top0) * o * hs;
+    let nx = MR.cx + (x - MR.cx) * (1 + 0.32 * e.mouthWide) * (1 + 0.22 * smile);
+    if (e.mouthTri && role !== 'top') {   // ▽ (> 0) narrows the bottom, △ (< 0) the top
+      const v = clamp((ny - top) / Math.max(1, MR.D * o * hs), 0, 1);
+      nx = MR.cx + (nx - MR.cx) * (1 - 0.7 * Math.abs(e.mouthTri) * (e.mouthTri > 0 ? v : 1 - v));
+    }
+    return [nx, ny];
+  }
+
   function fadeAlpha(M, L, e, alt) {
     const blinkVariant = M.blinkVariant;
     // capsule: drawn poses replace the rigged arms (only on models that have pose art)
@@ -330,6 +374,15 @@
     if (L.fade === 'eyeSmile') {   // capsule: drawn ^ ^ eyes, shown instead of the closed eye while smiling
       const v = L.side === 'L' ? e.eyeOpenL : e.eyeOpenR;
       return (1 - smooth((v - (0.10 + e.eyeEase * 0.45)) / eyeW)) * smooth((e.eyeSmile - 0.3) / 0.25);
+    }
+    // capsule: rigged mouth - its parts replace every drawn mouth; the cavity, teeth and tongue show once it
+    // opens, the lower lip line fades in a little later (at 0 it would sit on the upper one)
+    if (L.fade === 'mouthRig' || (M.hasMouthRig && e.mouthRig >= 0.5 && /^mouth(Open|Close|Grin|O|Smile)$/.test(L.fade))) {
+      if (L.fade !== 'mouthRig' || !M.hasMouthRig || e.mouthRig < 0.5) return 0;
+      const o = mouthOpenAmount(e);
+      // open art has its own outline along the top: the painted line gives way to it as the mouth opens
+      if (L.bn === 'mouth_lip_upper') return M.A.mouthRig.mode === 'art' ? 1 - smooth((o - 0.1) / 0.35) : 1;
+      return L.bn === 'mouth_lip_lower' ? smooth((o - 0.04) / 0.12) : smooth(o / 0.03);
     }
     if (L.fade === 'mouthSmile') return M.hasMouthShapes && mouthShape(e, M) === 'smile' ? 1 : 0;
     if (M.hasMouthShapes && (L.fade === 'mouthOpen' || L.fade === 'mouthGrin' || L.fade === 'mouthO' || L.fade === 'mouthClose')) {
@@ -382,6 +435,15 @@
       if (EA && (bn === 'eye_close' || bn === 'eye_close2')) {
         const sE = eyeSide === 'L' ? e.eyeScaleL : e.eyeScaleR;
         if (sE !== 1) { const cxE = (EA.x0 + EA.x1) / 2, cyE = (EA.y0 + EA.y1) / 2; x = cxE + (x - cxE) * sE; y = cyE + (y - cyE) * sE; }
+      }
+      const mrRole = MOUTH_RIG[bn] && A.mouthRig ? MOUTH_RIG[bn] : null;
+      if (mrRole) {
+        const MR = A.mouthRig, sM = e.mouthScale;
+        [x, y] = mouthRigPoint(MR, e, FS, mrRole, x, y);
+        if (sM !== 1) { x = MR.cx + (x - MR.cx) * sM; y = MR.cy + (y - MR.cy) * sM; }
+        y += e.mouthCY * 14 * FS;
+        const thM = e.mouthCAng * 0.35;
+        if (thM) { const ct = Math.cos(thM), st = Math.sin(thM), rx = x - MR.cx, ry = y - MR.cy; x = MR.cx + rx * ct - ry * st; y = MR.cy + rx * st + ry * ct; }
       }
       if (bn === 'mouth_open' || bn === 'mouth_close' || bn === 'mouth_grin' || bn === 'mouth_o' || bn === 'mouth_smile') {
         const sM = e.mouthScale;
@@ -557,9 +619,11 @@
       const base = L.group === 'head' ? headDX : bodyDX, windScale = L.phys === 'sway' && L.group !== 'head' ? 2.5 : 1;
       for (const sp of L.spr) {
         const w = wind ? (1.8 * Math.sin(t * 0.8 + sp.phase) + 1.0 * Math.sin(t * 1.9 + sp.phase * 2.3)) * windScale : 0;
-        const txv = base + w * FS;
-        RT.spring(sp.stiff, txv, 70, 9, dt); sp.stiff.dx = -(sp.stiff.x - txv) * 2.2;
-        RT.spring(sp.soft, txv, 16, 1.3, dt); sp.soft.dx = -(sp.soft.x - txv) * 3.0;
+        // capsule (hairVar): strands differ in reach (target) and stiffness (frequency); 0 = upstream exactly
+        const hv = e.hairVar ? e.hairVar * sp.vr : 0, f = 1 + 0.3 * hv;
+        const txv = base * (1 + 0.25 * hv) + w * FS;
+        RT.spring(sp.stiff, txv, 70 * f * f, 9 * f, dt); sp.stiff.dx = -(sp.stiff.x - txv) * 2.2;
+        RT.spring(sp.soft, txv, 16 * f * f, 1.3 * f, dt); sp.soft.dx = -(sp.soft.x - txv) * 3.0;
       }
     }
     const bustTgt = (e.breath * 3.0 - e.angleY * 6.0 + e.body * 4.0) * FS;
@@ -576,13 +640,14 @@
     for (const L of M.layers) if (L.fade === 'eyeClose2' && L.side && L.visible && L.opacity > 0) alt[L.side] = true;
     const items = [], masks = [], front = [];
     for (const L of M.layers) {
-      const isMask = L.bn === 'eyewhite' && !!L.side;
+      const isMouthMask = L.bn === 'mouth_inner' && M.hasMouthRig;   // capsule: teeth / tongue stay inside the cavity
+      const isMask = (L.bn === 'eyewhite' && !!L.side) || isMouthMask;
       const xa = extraAlpha ? extraAlpha(L) : 1;
       const alpha = L.visible ? fadeAlpha(M, L, e, alt) * L.opacity * xa : 0;
       if (alpha < 0.004 && !isMask) continue;
       deform(M, L, e);
-      if (isMask) masks.push({ L, side: L.side });
-      if (alpha >= 0.004) items.push({ L, alpha, clip: L.bn === 'irides' && L.side ? L.side : null });
+      if (isMask) masks.push({ L, side: isMouthMask ? 'M' : L.side });
+      if (alpha >= 0.004) items.push({ L, alpha, clip: L.bn === 'irides' && L.side ? L.side : (L.bn === 'mouth_teeth' || L.bn === 'mouth_tongue') ? 'M' : null });
       // capsule: forearm in front of the body (same mesh, drawn again on top, fading in past the elbow)
       if (L.aw && alpha >= 0.004) { const f = armFront(M, L.side, e); if (f > 0.004) front.push({ L, alpha: alpha * f, clip: null, valpha: L.aw, front: true }); }
     }
@@ -590,5 +655,25 @@
     return { masks, items };
   }
 
-  return { DEFAULTS, RANGES, EXTENSIONS, ARM_KEYS, FACE_KEYS, FX_KEYS, POSE_ART_KEYS, POSES, clamp, smooth, createModel, applyAnchors, fadeAlpha, deform, updateSprings, buildFrame, armPose, solveArmIK, armFront };
+  /**
+   * Per-character starting values for the capsule tuning switches (editor on first open, build-bundle):
+   * skin eyelids / rigged mouth / strand variety when the rig has those parts, and the smile style from
+   * the eye shape - long narrow eyes (cool, sleepy-looking characters) smile with narrowed eyes instead
+   * of closing them into ^ ^.
+   */
+  function characterDefaults(rig) {
+    const L = rig.layers || [], A = rig.anchors || {}, out = {};
+    if (L.some(l => l.fade === 'eyeLid')) out.eyeLid = 1;
+    if (L.some(l => l.fade === 'mouthRig') && A.mouthRig && !L.some(l => /^mouth(Grin|O|Smile)$/.test(l.fade))) out.mouthRig = 1;
+    if (L.some(l => l.strands && l.strands.length)) out.hairVar = 1;
+    const asp = ['eyeL', 'eyeR'].filter(k => A[k]).map(k => { const f = eyeFrame(A[k]); return f.B / Math.max(1, f.A); });
+    if (asp.length) {
+      const a = asp.reduce((s, v) => s + v, 0) / asp.length;
+      // B/A: about 0.4 for long narrow eyes, 0.6+ for round ones
+      out.smileEyes = Math.round(clamp((a - 0.36) / 0.22, 0.25, 1) * 100) / 100;
+    }
+    return out;
+  }
+
+  return { characterDefaults, DEFAULTS, RANGES, EXTENSIONS, ARM_KEYS, FACE_KEYS, FX_KEYS, POSE_ART_KEYS, POSES, clamp, smooth, createModel, applyAnchors, fadeAlpha, deform, updateSprings, buildFrame, armPose, solveArmIK, armFront };
 });
