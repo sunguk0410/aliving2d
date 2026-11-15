@@ -32,8 +32,11 @@ class ServeTests(unittest.TestCase):
         return code, data, head
 
     def test_static_files(self):
-        self.assertEqual(self.request('GET', '/')[0], 200)
-        self.assertEqual(self.request('GET', '/lib/app.js')[0], 200)
+        code, _, head = self.request('GET', '/')
+        self.assertEqual(code, 302)
+        self.assertEqual(head['Location'], '/v2/viewer/')
+        self.assertEqual(self.request('GET', '/v2/viewer/index.html')[0], 200)
+        self.assertEqual(self.request('GET', '/v2/engine/engine.js')[0], 200)
         code, _, head = self.request('GET', '/lib/vendor/face_mesh/face_mesh_solution_simd_wasm_bin.wasm')
         self.assertEqual(code, 200)
         self.assertEqual(head['Content-Type'], 'application/wasm')
@@ -65,7 +68,7 @@ class ServeTests(unittest.TestCase):
                     break
                 data += chunk
             self.assertIn(b'400', data)
-        self.assertEqual(self.request('GET', '/')[0], 200, 'server still healthy')
+        self.assertEqual(self.request('GET', '/v2/viewer/index.html')[0], 200, 'server still healthy')
 
 
 if __name__ == '__main__':

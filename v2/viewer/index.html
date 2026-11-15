@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>v2 모델 보기</title>
+<style>
+  :root { color-scheme: light; --bg: #f4f2ef; --panel: #fff; --ink: #222; --quiet: #777; --line: #ddd; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 system-ui, "Malgun Gothic", sans-serif; background: var(--bg); color: var(--ink);
+         display: grid; grid-template-columns: 1fr 280px; height: 100vh; }
+  #stage { position: relative; min-width: 0; }
+  canvas { width: 100%; height: 100%; display: block; }
+  aside { background: var(--panel); border-left: 1px solid var(--line); padding: 16px; overflow: auto; }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  .quiet { color: var(--quiet); font-size: 12px; }
+  label { display: block; margin: 14px 0 2px; }
+  input[type=range] { width: 100%; }
+  .row { display: flex; justify-content: space-between; }
+  button { margin-top: 12px; padding: 6px 10px; border: 1px solid var(--line); background: #fafafa; border-radius: 6px; cursor: pointer; }
+  button[aria-pressed=true] { background: #222; color: #fff; }
+  #err { color: #b00020; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="c"></canvas></div>
+<aside>
+  <h1>v2 모델 보기</h1>
+  <div class="quiet" id="name"></div>
+  <div id="sliders"></div>
+  <button id="follow" aria-pressed="false">마우스 따라 보기</button>
+  <button id="swing" aria-pressed="false">자동으로 고개 돌리기</button>
+  <button id="blink" aria-pressed="true">자동 깜빡임</button>
+  <label class="row"><span>확대</span><span id="zv">1.0</span></label>
+  <input id="zoom" type="range" min="0.6" max="3" step="0.05" value="1">
+  <p class="quiet">주소 뒤에 <code>?model=../bundles/이름/model.json</code></p>
+  <div id="err"></div>
+</aside>
+<script src="../engine/engine.js"></script>
+<script>
+(async () => {
+  const q = new URLSearchParams(location.search);
+  const url = q.get('model') || '../bundles/test/model.json';
+  document.getElementById('name').textContent = url;
+  const canvas = document.getElementById('c');
+  const resize = () => {
+    const r = canvas.getBoundingClientRect(), d = devicePixelRatio || 1;
+    canvas.width = Math.round(r.width * d); canvas.height = Math.round(r.height * d);
+  };
+  resize();
+  let m;
+  try { m = await CapsuleV2.load(canvas, url); }
+  catch (e) { document.getElementById('err').textContent = String(e); return; }
+  window.model = m;
+  const [W, H] = m.json.canvas;
+  let zoom = Number(q.get('zoom') || 1), cx = Number(q.get('cx') || W / 2), cy = Number(q.get('cy') || H / 2);
+  document.getElementById('zoom').value = zoom;
+  const box = document.getElementById('sliders');
+  const inputs = {};
+  for (const p of m.json.params) {
+    const lab = document.createElement('label');
+    lab.className = 'row';
+    lab.innerHTML = `<span>${p.id}</span><span id="v_${p.id}">0.00</span>`;
+    const inp = document.createElement('input');
+    Object.assign(inp, { type: 'range', min: p.min, max: p.max, step: 0.01, value: p.default ?? 0 });
+    inp.oninput = () => { m.set(p.id, Number(inp.value)); };
+    box.append(lab, inp);
+    inputs[p.id] = inp;
+  }
+  const follow = document.getElementById('follow'), swing = document.getElementById('swing');
+  const toggle = b => b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') !== 'true');
+  follow.onclick = () => toggle(follow);
+  const blinkBtn = document.getElementById('blink');
+  blinkBtn.onclick = () => toggle(blinkBtn);
+  if (q.get('blink') === '0') blinkBtn.setAttribute('aria-pressed', 'false');
+  let nextBlink = performance.now() + 2000, blinkStart = -1;
+  swing.onclick = () => toggle(swing);
+  let target = { angleX: 0, angleY: 0, eyeX: 0, eyeY: 0 };
+  canvas.addEventListener('pointermove', e => {
+    const r = canvas.getBoundingClientRect();
+    target.angleX = Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width - 0.5) * 2.4));
+    target.angleY = Math.max(-1, Math.min(1, -((e.clientY - r.top) / r.height - 0.5) * 2.4));
+  });
+  document.getElementById('zoom').oninput = e => { zoom = Number(e.target.value); };
+  addEventListener('resize', resize);
+  const t0 = performance.now();
+  const frame = now => {
+    if (swing.getAttribute('aria-pressed') === 'true') {
+      const t = (now - t0) / 1000;
+      target.angleX = Math.sin(t * 0.9);
+      target.angleY = 0.35 * Math.sin(t * 0.55);
+    }
+    if (follow.getAttribute('aria-pressed') === 'true' || swing.getAttribute('aria-pressed') === 'true') {
+      target.eyeX = target.angleX; target.eyeY = target.angleY;
+      for (const [id, k] of [['angleX', 0.12], ['angleY', 0.12], ['eyeX', 0.35], ['eyeY', 0.35]]) {
+        if (!(id in m.params)) continue;
+        const v = m.params[id] + (target[id] - m.params[id]) * k;   // the eyes get there first
+        m.set(id, v);
+        inputs[id].value = v;
+      }
+    }
+    if (blinkBtn.getAttribute('aria-pressed') === 'true' && 'eyeOpenL' in m.params) {
+      if (blinkStart < 0 && now > nextBlink) blinkStart = now;
+      if (blinkStart >= 0) {
+        // ~0.32 s: close (35 %), stay shut a moment (12 %), open a little slower (53 %), eased
+        const u = (now - blinkStart) / 320;
+        const ease = t => t * t * (3 - 2 * t);
+        const open = u < 0.35 ? 1 - ease(u / 0.35) : u < 0.47 ? 0 : u < 1 ? ease((u - 0.47) / 0.53) : 1;
+        for (const id of ['eyeOpenL', 'eyeOpenR']) { m.set(id, open); inputs[id].value = open; }
+        if (u >= 1) { blinkStart = -1; nextBlink = now + 2500 + Math.random() * 3000; }
+      }
+    }
+    for (const id in inputs) document.getElementById('v_' + id).textContent = Number(m.params[id]).toFixed(2);
+    document.getElementById('zv').textContent = zoom.toFixed(2);
+    m.setView(zoom, cx, cy);
+    m.draw();
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

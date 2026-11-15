@@ -1,93 +1,71 @@
-# Capsule Model Studio — Claude Code 안내
+# Capsule Model Studio — Claude Code 안내 (v2)
 
 ## 목표
-애니풍 캐릭터 그림 한 장 → 파츠 PSD(see-through) → 자동 리깅 → **캡슐(CAPSULE) 앱용 모델 묶음**을 만드는 개인용 로컬 도구. 배포하지 않는다.
-- **우선순위는 모델 품질**이다 (팔 움직임, 다양한 표정). 속도보다 품질.
-- 표정·모션 이름은 캡슐 백엔드의 이름과 맞출 필요 없음.
-- 사용자와의 대화는 한국어. 편집기 UI도 전부 한국어(2026-11-13 캡슐용으로 개편). 필요한 기능만 둔다: OBS 송출·PNG 저장·녹화는 뺐고, 카메라 추적·마이크 립싱크는 남김.
+애니풍 캐릭터 그림 한 장 → **Live2D 장인의 작업 순서를 AI·규칙으로 따라가는** 자동 리깅 → 캡슐(CAPSULE) 앱용 모델. 개인용 로컬 도구, 배포하지 않음.
+- 목표 품질은 **Live2D 수작업 쇼케이스 모델**. 가장 중요한 것은 고개 돌릴 때의 자연스러움, 그다음 눈 디테일, 머리카락 흔들림, 표정.
+- 사용자와의 대화는 한국어. 비용·시간 제한은 없지만 **GPU는 이 PC(RTX 4060 8GB, RAM 16GB)만** 쓴다. 클라우드 GPU 제안 금지. OpenAI·비전 LLM 같은 GPU 없는 API는 써도 됨.
+- 설계 문서: https://claude.ai/artifact/UuXijAnwywxPTXWUYhwsGp (Claude Docs)
+- v1(편집기, 공식 기반 엔진, see-through 레이어 그대로 리깅)은 **태그 `v1-final`**에. 2026-11-16 v2로 전환하며 v1 코드는 지움.
+
+## 원칙
+- **장인 과정을 따른다**: 파츠 나누기·그려 넣기 → 표정 → 기본 움직임 → 얼굴 각도 XY → 물리. 근거 자료는 설계 문서의 출처(Live2D 공식, 925·乾物ひもの 노트).
+- **범용 원칙으로만 규칙을 만든다** (특정 캐릭터의 숫자에 맞추지 말 것. 시험 캐릭터 "채린이"에 특화되면 안 됨): 선은 끊기지 않는 하나의 파츠 / 속눈썹은 가까운 눈꺼풀 선을 따른다(눈 앞머리·눈꼬리 기준) / 눈꺼풀은 자기 속눈썹과 같은 격자로 붙어 움직인다 / 입꼬리는 뾰족하다.
+- **보이는 픽셀은 모델 자신의 레이어에서**: AI 그림에서는 그 상태에만 있는 선·모양을 가져오고, 피부 같은 바탕은 모델의 얼굴 레이어를 쓴다(이음새 방지).
+- **그림에 없는 상태는 GPT가 같은 얼굴로 그린 그림**(입 벌림, 웃는 눈 ^ ^)에서 가져와 파츠로 쓴다 = Live2D 描き目.
+- 고개 돌리기는 **장인 규칙**(그림 한 장 + 원통 머리 모형). 턴어라운드(AI 3/4 그림 섞기, `morph_views.py`)는 비교 후 쓰지 않기로 함(2026-11-16, 중간 각도 겹침).
+- 편집기 파이프라인 단계는 사용자에게 묻지 않고 끝까지 진행, 실패하면 자동으로 대체.
 
 ## 구조
 | 경로 | 내용 |
 |---|---|
-| `index.html`, `lib/app.js`, `lib/app.css` | 편집기. 첫 화면은 그림 올리기 카드 하나(이 PC 상태에 따라 업로드 / 설치하기 / Colab 안내, 모델이 열리기 전엔 옆 패널 숨김), 변환 중엔 원본·다듬은 그림과 4단계 진행. 탭 4개(점검 / 움직이기 / 캐릭터 맞춤 / 레이어). 슬라이더는 `app.js`의 `SLIDERS` 표에서 생성, 캐릭터 맞춤 슬라이더는 `TUNE_INFO`(설명 + 잡고 있는 동안 보여 줄 자세). 조정값·모델별 reactions.json은 브라우저에 자동 저장. 변형 수식은 `engine/core.js` 호출 |
-| `lib/expressions.js` | reactions.json 검증·정리, 슬라이더 자세 ↔ 표정/모션 키 변환 (DOM 없음) |
-| `serve.py` | `npm start` 로컬 정적 서버 (localhost 전용, 읽기 전용 + 설치 버튼용 POST 하나). GPU PC면 see-through 변환 서버도 같이 켬 (`--no-seethrough`로 끔, 테스트는 끔) |
-| `lib/rigger.js` | PSD → rig (레이어 이름 해석, 좌우 분리, 머리 가닥, 앵커). DOM 없음, Node 테스트 가능 |
-| `lib/psd-worker.js` | 브라우저에서 PSD 파싱 + 리깅 (Web Worker) |
-| `engine/core.js` | **변형 엔진 (편집기·플레이어 공용)**. 메시 생성, fadeAlpha, deform, updateSprings |
-| `engine/animator.js` | 파라미터 층: 기본값 → 표정 → 대기 동작 → 모션 → 깜빡임·말하기 |
-| `engine/tracking.js` | 카메라 손목 → 팔 값 (`CapsuleTracking`). 편집기와 캡슐 프론트 공용 |
-| `engine/reactions.default.json` | 기본 표정 18개·모션 12개·반응표. 표정 이름에 `label`(한국어) |
-| `engine/player.js` | 캡슐 프론트용 플레이어 `CapsulePlayer` |
-| `engine/bundle.js` | 묶음 쓰기 (rig.json, 무손실 PNG, ZIP). 편집기 「캡슐 모델 내보내기」와 CLI 공용 |
-| `tools/build-bundle.js` | PSD → 묶음 CLI (`--settings`로 편집기 설정 적용) |
-| `engine/demo/` | 플레이어 데모 `index.html?bundles=a,b`, 팔 리깅 확인 페이지 `arms.html?b=sampleA`, 표정 한눈에 보기 `sheet.html?b=…&only=…` 또는 `&sets=[["이름",{params}]]&focus=mouth` (WebGL 화면은 한 페이지에 16개쯤까지) |
-| `seethrough/server.py` | see-through 변환 서버 (그림 → 파츠 PSD). 표준 라이브러리만. Colab·GPU 데스크톱·`--mode fake` 공용. 작업마다 `phase`(prepare/parts/depth/psd)와 `/jobs/<id>/prepared` |
-| `seethrough/redraw.py` | 「AI로 자세 바로잡기」: OpenAI 이미지 편집(`gpt-image-2.5-sunburst`, 960×1280)으로 같은 캐릭터를 정면·양팔 자세로 다시 그림. 키는 `.local/openai.json`(git 제외, 서빙 안 함), 편집기는 끝 4자리만 봄. serve.py `POST /api/redraw`, `/api/redraw/key` |
-| `seethrough/expression_art.py` | 표정 그림: 얼굴을 잘라 1024로 키운 뒤 눈·입 자리만 GPT로 다시 그림(감은 눈 / 웃는 눈 / 아·웃는·오 입). 색을 원본에 맞추고, 앞머리는 지워 피부로 메우고, 눈·입 둘레만 바뀐 부분을 레이어로. GPT가 남긴 투명 부분은 원본으로 채움(그냥 RGB로 바꾸면 검은 상자). 원본 GPT 결과는 `<out>.raw/`에 남겨 `--reuse`로 다시 자르기 |
-| `seethrough/pose_art.py` | 공부 자세: 머리·가슴은 고정하고 팔·소품만 GPT로 → see-through(몸 단계만, `body_only.py`) → `handwear@typing` / `objects@typing`으로 합침 |
-| `seethrough/body_only.py` | see-through를 몸 단계만 돌림(얼굴 단계 생략, 원본 수정 없이 함수만 바꿔 끼움). 자세 변환 8.2분 → 4.8분 |
-| `seethrough/fix_psd.py` | 변환 후 PSD 정리 (see-through 쪽 Python): 원본 그림과 비교해, 위 파츠의 숨은 부분 그림이 실제로 보이던 아래 파츠를 덮는 큰 영역(예: 셔츠 뒷깃이 목을 덮음)을 위 파츠에서 지움. 눈·입 같은 얼굴 작은 파츠는 건드리지 않음 (리거가 순서를 맞춤) |
-| `seethrough/prepare.py` | 변환 전 그림 다듬기 (see-through 쪽 Python): 애니 캐릭터 분할(skytnt/anime-seg ISNet)로 배경 제거 → 주 캐릭터만 → 흰 바탕 3:4, 세로 1280px. see-through 예시 그림과 같은 모양으로 맞춤 |
-| `seethrough/manager.py` | `serve.py`가 쓰는 see-through 관리: NVIDIA GPU 확인 → 설치돼 있으면 변환 서버를 자동으로 켬(토큰 없음, 편집기 origin만 허용), 아니면 편집기 「설치하기」 버튼 → `desktop.py --setup-only`. 상태는 `/local-config.json`, 설치는 `POST /api/seethrough/install` |
-| `seethrough/desktop.py` | 설치 스크립트 (`seethrough/.venv`에 CUDA PyTorch·의존성). 터미널용 `npm run seethrough` (`--check`, `--lan`: 다른 PC에서 연결 코드로 쓰기) |
-| `seethrough/see_through_colab.ipynb` | Colab 노트북. `seethrough/build_colab.py`가 server.py를 끼워 넣어 생성 (server.py 고치면 `npm run build:colab`) |
-| `lib/seethrough.js` | 편집기 쪽 클라이언트. 연결 코드 = `<url>#<token>` |
-| `lib/vendor/face_mesh`, `lib/vendor/hands` | MediaPipe 고정 버전 (얼굴, 손). 둘은 전역 wasm 로더를 같이 쓰므로 FaceMesh가 돈 뒤 Hands를 초기화 |
-| `third_party/see-through` | see-through 원본 (git submodule, Apache-2.0). 가중치는 저장소에 없음, 실행 시 Hugging Face에서 받음 |
+| `v2/py/rig.py` | 기준 엔진(Python): 파츠, 변형 격자(`Warp`), 키폼 보간, 불투명도 키폼, 클립·마스크 전용 파츠, PSD 읽기(see-through 옅은 알파 잡티 제거) |
+| `v2/py/artisan.py` | 장인 규칙: 좌우 파츠 나누기, 얼굴 기준점, 장인 레이어 순서(see-through 깊이 순서를 믿지 않음), 각도 X·Y 키폼(원통·타원체, 파츠별 깊이 `part_rule`), `build()`가 아래 단계들을 부름 |
+| `v2/py/eye_parts.py` | 눈동자 원 완성, 동공·하이라이트 분리 |
+| `v2/py/eyes_rig.py` | 시선 `eyeX/eyeY` (흰자로 클립, 하이라이트는 절반만) |
+| `v2/py/blink_rig.py` | 깜빡임 `eyeOpenL/R`, 웃는 눈 `eyeSmile`: 피부 눈꺼풀(얼굴 레이어 픽셀, 속눈썹과 같은 격자, 흰자보다 3px 큰 마스크로 클립), 속눈썹 위·아래·쌍꺼풀(`split_lashes_corners`, `follow_line`) |
+| `v2/py/drawn_eyes.py` | 그린 웃는 눈: GPT ^ ^ 그림의 선만(진한 씨앗에서 키워 통째로, 앞머리 자리는 제외) + 모델 얼굴 피부, `eyeSmile` 0.8~0.97에서 나타남 |
+| `v2/py/mouth_rig.py` | 입 `mouthOpen`, `mouthForm`: GPT 입 벌린 그림 → 입 마스크·입 안·윗입술·아랫입술, 렌즈 모양 중간 키폼, 다문 입 폭의 1.15배로 맞춤 |
+| `v2/py/export_bundle.py` | 묶음 v2 쓰기 (`model.json` + `parts/*.png`), CLI |
+| `v2/py/gpt_image.py` | OpenAI 이미지 편집(키·모델은 `seethrough/redraw.py`) |
+| `v2/py/upscale.py` | Real-ESRGAN anime 6B (패키지 없이 직접 정의, 가중치 `.local/models/`) |
+| `v2/py/` 그 밖 | 실험 기록: `exp0_compare.py`, `fit_turn.py`·`turn_check.py`(GPT 목표 그림 맞추기, GPT는 고개 각도를 못 따름), `morph_views.py`(턴어라운드) |
+| `v2/engine/engine.js` | 브라우저 엔진(WebGL2): 키폼, 불투명도, 섞기 그룹, 클립 마스크, 마스크 전용 파츠 |
+| `v2/viewer/index.html` | 뷰어: 슬라이더, 마우스 따라 보기, 자동 고개 돌리기, 자동 깜빡임(`?blink=0`으로 끔) |
+| `v2/bundles/` | 묶음 (캐릭터 그림이라 git 제외) |
+| `serve.py` | `npm start` 로컬 서버. `/` → `/v2/viewer/`. see-through 설치·자동 실행(`seethrough/manager.py`) |
+| `seethrough/` | see-through 서버·설치(`server.py`, `manager.py`, `desktop.py`), 그림 다듬기 `prepare.py`, GPT `redraw.py`, 공부 자세 `pose_art.py`·`body_only.py`(나중에 v2에 연결), `fix_psd.py`·`expression_art.py`(서버·pose_art가 씀) |
+| `engine/tracking.js` | 카메라 손목 → 팔 값 (v1에서 남김, v2 엔진에 다시 연결할 것) |
+| `engine/reactions.default.json` | 캡슐 반응표 (v1 표정 이름, v2 파라미터로 다시 매핑할 것) |
+| `lib/vendor/` | MediaPipe FaceMesh·Hands 고정 버전 |
+| `third_party/see-through` | see-through 원본 (git submodule, Apache-2.0) |
 
-묶음 형식: `rig.json`(canvas, anchors, anchorOffsets, settings, layers[]) + `parts/*.png` + `reactions.json`. 자세한 건 `engine/README.md`.
+묶음 v2 형식은 `v2/py/export_bundle.py` 맨 위 설명 참고.
 
 ## 규칙
-- 엔진 수식을 바꾸면 `tests/equivalence.test.js`가 통과해야 한다. 원본 수식(`tests/fixtures/upstream-deform.js`, 고치지 말 것)과 비트 단위로 같은지 본다. 새 기능은 `Core.DEFAULTS`/`RANGES`에 넣고 **기본값에서는 원본과 같은 결과**가 나오게 하며 `Core.EXTENSIONS`에 등록한다.
-- 새 파라미터는 `engine/core.js`의 `DEFAULTS`/`RANGES`와 편집기 `lib/app.js`의 `SLIDERS` 표에 같이 넣는다. 포즈·표정용이면 「움직여 보기」(head/arms) 또는 「표정·모션」(face/face-more/fx) 그룹에 두고 `engine/bundle.js`의 `POSE_KEYS`에도 넣는다(묶음 settings에 구워지지 않게, 표정 저장 대상). 캐릭터 조정값이면 「모델 조정」 그룹(eyes/mouth/physics).
-- 효과 레이어(`fade: 'fx'`)는 원본에 없는 레이어라 `tests/equivalence.test.js`에서 건너뛴다. 기본값(0)에서는 안 그려진다.
-- 눈 파츠는 리거가 항상 흰자 → 눈동자 → 속눈썹 → 감은 눈 순으로 쌓는다 (see-through가 기울어진 얼굴에서 흰자를 눈동자 위에 두는 일이 있었음).
-- 눈 감기 기본은 **피부 눈꺼풀** (`eyeLid` 1, 리거가 흰자·눈동자 모양으로 `eye_lid_l/r`을 얼굴 레이어 색으로 만듦): 눈꺼풀이 위에서 내려오고 위 속눈썹 띠가 내려오며 얇아져 감은 눈 선이 됨(웃으면 ∩, 아래 속눈썹도 합쳐짐). 속눈썹은 리거가 위(`eyelash`) · 아래(`eyelash_lower`) · 쌍꺼풀 선(`eyelash_crease`, 제자리)으로 나눔. 웃는 눈은 아래 속눈썹이 올라가 위와 만나는 변형(나눠졌으면 GPT 웃는 눈 그림은 안 씀). 방향: AI로 상태 그림을 만들지 말고 파츠를 잘게 나누거나 빠진 파츠를 만들어 리깅으로 표정을 냄. 감은 눈 그림은 `eyeLid` 0일 때만 씀. 눈꺼풀 레이어는 `tests/equivalence.test.js`에서 건너뜀.
-- 입: 그린 입 모양(GPT `mouth_grin`/`o`/`smile`)이 있는 모델은 그것이 기본(`mouthRig` 0, 사용자가 더 낫다고 함 2026-11-15), 없는 모델은 **입 파츠** (`mouthRig` 1, 리거 `synthMouth`, 웃으면 넓고 높아짐): see-through 입 레이어를 입 안·윗니·혀·아랫입술 선·윗입술 선으로 나누고, 엔진이 윗입술 곡선 아래로 입 안을 벌림(이는 윗입술, 혀·아랫입술은 입 안 바닥을 따라감, 이·혀는 입 안 모양으로 잘림 = 렌더러 마스크 파란 채널). 선으로 그린 입은 나머지 파츠를 캐릭터 색으로 그려 넣고, 벌린 입 그림은 그 그림을 입 안으로 씀. 파츠 레이어(`fade: 'mouthRig'`)는 `tests/equivalence.test.js`에서 건너뜀. `mouthRig` 0이면 예전 방식: 그린 입 모양이 있는 모델(`hasMouthShapes`)은 섞지 않고 하나만 보임 (`Core` `mouthShape`), 없는 모델은 원본과 같음.
-- 머리카락: 리거가 앞머리·뒷머리 레이어를 **다발 레이어로 자름** (`splitHairLocks`, `front hair_1…`, 앞머리 약 35px·뒷머리 약 95px마다 한 조각, 다발 끝이 뚜렷이 갈라진 틈부터 자르고 모자라면 가장 넓은 조각의 가운데를 자름. 자르는 선은 그림의 어두운 결을 따라가고 이웃 조각과 2px 겹침. 조각의 가닥은 원래 레이어 기준 뿌리·끝을 써서 뿌리 쪽은 같이 움직임. `hairLocks: false`로 끔). 조각이 아닌 머리 레이어는 가닥을 앞머리 약 30px·뒷머리 약 42px마다 하나(앞 4~10, 뒤 6~14)로 잡음. `hairVar` 1(편집기·`build-bundle` 기본)이면 가닥마다 스프링 세기·폭이 달라 따로 흔들림. 0이면 모든 가닥이 같이(원본).
-- 캐릭터별 처음 값은 `Core.characterDefaults(rig)` 하나에서 정함(편집기 첫 열기, `build-bundle` 공용): 피부 눈꺼풀, 입 파츠(그린 입 없을 때), 가닥 따로, **웃는 눈 `smileEyes`**(눈이 가늘고 길면 낮게 → 웃을 때 ^ ^ 대신 눈을 가늘게 뜸, 쿨·나른한 캐릭터용). `smileEyes`는 표정 목표값에 적용(`CapsuleAnimator.styleExpression`, 편집기 `applyExpression`도 같은 함수), 윙크는 그대로.
-- 모델을 직접 만들어 볼 때는 see-through 작업 폴더의 `fixed/` PSD를 쓴다 (`out/`은 목을 덮는 옷 뒷깃 등이 정리되기 전).
-- 편집기 파이프라인 단계(자세 바로잡기, 표정·자세 그림)는 사용자에게 묻지 않고 끝까지 진행, 실패하면 자동으로 원본으로.
-- 테스트용 `serve.py`는 `--no-seethrough --seethrough-port <빈 포트>`로 띄운다 (사용자의 진짜 변환 서버가 7860에 떠 있을 수 있음).
-- `sample.psd`, `sample2.psd`는 원작자 그림이다. **커밋 금지** (`.gitignore`). 테스트용으로 로컬에만 둔다.
+- 실행 산출물·실험 결과는 `.local/v2_runs/`(git 제외, 서빙 안 됨). 서버가 점(.) 폴더는 내주지 않으므로 뷰어용 묶음은 `v2/bundles/`.
+- see-through는 `seethrough/.venv`의 Python으로 `third_party/see-through`에서 `inference/scripts/inference_psd_quantized.py --no_group_offload --srcp <그림> --save_dir <폴더> --save_to_psd` (약 20분/장). 얼굴은 해상도가 품질을 정하므로 머리 크롭을 업스케일해서 돌리는 게 좋음(실험 0).
+- **GPU 작업은 한 번에 하나**. 사용자의 변환 서버(7860)가 돌고 있으면 기다릴 것(16GB RAM이라 같이 돌면 느려지고 죽음).
+- 테스트용 `serve.py`는 `--no-seethrough --seethrough-port <빈 포트>`로.
+- 패키지 설치가 막혀 있을 수 있음(자동 모드). 필요한 건 직접 구현하거나 가중치만 받기.
+- `sample.psd`, `sample2.psd`는 원작자 그림. **커밋 금지**.
 - `LICENSE`의 원작자(hakoniwa) 줄은 지우지 않는다.
-- 내부 형식 이름(`anime25d-settings`, localStorage `anime25d.*`, `window.Anime25D`)은 호환성 때문에 바꾸지 않는다.
 
 ## 명령
 ```bash
-npm start                                   # http://127.0.0.1:8000/ (편집기), /engine/demo/ (플레이어)
-npm run test:node                           # 리거·엔진·묶음
-npm run test:python                         # 로컬 서버, see-through 서버, desktop.py
-npm run seethrough -- --check               # see-through 설치 상태 (보통은 npm start만 켜면 편집기가 설치·실행까지 함)
-npm install --no-save playwright@1.49.1     # 브라우저 테스트용 (설치된 Chrome 사용)
-CHROME_CHANNEL=chrome npm run test:browser  # 편집기 회귀 (가상 장치 51개 + 실제 PSD·기준점·얼굴 추적)
-CHROME_CHANNEL=chrome npm run test:player   # 플레이어 스모크 (npm start 실행 중, DEMO_URL로 ?bundles= 지정 가능)
-CHROME_CHANNEL=chrome npm run test:seethrough  # 시작 화면: 그림 → fake 변환 서버(자동으로 찾음) → 리깅 (자체 서버 띄움)
-python seethrough/server.py --mode fake --fake-psd sample2.psd --token ''   # GPU 없이 변환 흐름 시험
-node tools/build-bundle.js sample2.psd bundles/sampleA   # 데모용 샘플 묶음
+npm start                 # http://127.0.0.1:8000/ (v2 뷰어)
+npm test                  # Python: 로컬 서버, see-through 서버, desktop.py
+python v2/py/export_bundle.py <psd> v2/bundles/<이름> --src <정면 그림> --mouth-open <입 벌린 그림> --smile-eyes <웃는 눈 그림>
+python v2/py/gpt_image.py <그림> <출력> --prompt-file <프롬프트> [--size 1024x1024] [--n 2]
 ```
 
+## 진행 상황 (v2)
+- [x] 실험 0: 얼굴 크롭 업스케일 see-through → 해상도는 오르지만 나누는 단위는 그대로
+- [x] 실험 1: 눈 파츠 (원 완성, 동공, 하이라이트)
+- [x] 실험 2·3: 키폼 엔진(Python·WebGL2), 고개 돌리기 — GPT 목표 그림 맞추기는 실패(GPT가 정면 쪽으로만 돌림) → 장인 규칙으로 결정
+- [x] 시선, 깜빡임(피부 눈꺼풀), 속눈썹 위·아래·쌍꺼풀, 그린 웃는 눈, 입(벌림·웃음)
+- [ ] 명령 하나로 도는 파이프라인 + 여러 캐릭터 일괄 시험(일반화 확인) ← 다음
+- [ ] 머리카락 다발 + 여러 단 진자 물리, 몸·팔, 아·이·우·에·오, 웃는 눈 ∩ 강화
+- [ ] v2용 업로드 화면, 캡슐 연동(플레이어, 카메라 추적, 반응표)
+
 ## 관련 프로젝트
-- **캡슐 백엔드**: `C:\Users\kkcc4\IdeaProjects\Backend_lab` (Spring). Live2D 모양의 계약을 쓴다. 모델은 `modelJsonUrl` + `scale`/`offsetX`/`offsetY`, 모션은 `{group, file}`, 표정은 `{name, file}`이다. 어떤 반응에 어떤 표정·모션을 쓸지는 DB(`live2d_reaction_maps`)가 고른다. 아바타는 프론트가 카메라로 사용자의 **얼굴과 손(손목 위치 → 팔 값)**을 매 프레임 따라 한다(`docs/specs/api.md` 18번). 그래서 팔 리깅이 중요하다.
-- 예전 폴더 `Anime2.5DRig`, `capsule-rig`는 참고용. 작업은 이 저장소에서만.
-
-## 환경
-- 2026-11-14 확인: 지금 작업하는 PC는 **RTX 4060 8GB(cc 8.9), RAM 16GB, Python 3.13** 데스크톱이다 (예전 메모의 "GPU 없는 노트북"과 다름). see-through 자동 모드는 nf4. 노트북에서 작업할 때는 Colab 노트북을 쓴다.
-
-## 진행 상황
-- [x] capsule-rig 엔진 통합, 편집기가 공용 엔진 사용, 「캡슐 모델 내보내기」(2026-11-13)
-- [x] 팔 리깅 1~3단계 (2026-11-13): 좌우 분리, 어깨·팔꿈치·손목 검출(편집기 앵커로 보정), FK 각도 + 원근 IK(`armLX/LY` 등), 대시보드 `engine/demo/arms.html`. sample2는 팔 뒤 몸통이 채워져 있음 확인. sample.psd는 handwear에 몸통이 섞여 있음 (→ 2026-11-14 잘라 내기로 해결)
-- [x] 팔 앞뒤 순서 (2026-11-13): 손이 몸 안쪽으로 오거나 위팔이 카메라 쪽(원근 단축)이면 아래팔을 맨 위에 한 번 더 그림 (`Core.armFront`, 렌더러 꼭짓점 알파). 손이 없는(잘린) 그림은 손을 만들지 않음
-- [x] 표정 다양화 (2026-11-14): `eyeSmile`·`mouthWide`·`mouthTri`·`cheekPuff`, 효과 레이어 5종 자동 그림(PSD에 있으면 그것 사용), 기본 표정 18개·모션 12개, 편집기 「표정·모션」 탭에서 만들기·저장(모델별 자동 저장, 내보내기에 포함)
-- [x] 카메라 손 추적 (2026-11-14): MediaPipe Hands → `engine/tracking.js` → `armLX/LY/RX/RY`. 손이 없으면 천천히 기본 자세. **실제 손이 나오는 영상으로는 아직 확인 전** (테스트 영상엔 얼굴만)
-- [x] 몸통에 섞인 팔 잘라 내기 (2026-11-14): sample.psd도 팔 리그 켜짐. 팔 뒤 몸통 옆면은 경계 색으로 채움 (팔 사이 넓은 구멍은 못 채움)
-- [x] 그림 다듬기 + 첫 화면·탭 개편 (2026-11-14): 배경 있는 장면 그림도 캐릭터만 잘라 변환, 눈 파츠 순서 보정, 업로드 카드 첫 화면, 움직여 보기+표정·모션 → 「움직이기」, 모델 조정 → 「캐릭터 맞춤」(설명 + 미리보기 자세), 연결 코드 UI 삭제 (다른 PC의 GPU를 쓰는 길은 이제 없음)
-- [x] 자세 바로잡기 + 변환 품질 선택 (2026-11-14): OpenAI로 다시 그린 뒤 원본과 비교해 고르기. 품질 「고화질 1280(기본, 약 20분)」/「빠르게 1024(약 8분, 얼굴이 조금 흐림)」. RTX 4060 실측 파츠 단계 1단계당: NF4 1280 23.2초(8GB 넘침), 1152 12.1초, 1024 6.8초, bf16 block-swap 1280 14.1초지만 전체는 20.8분이라 이득 없음. 실제 OpenAI 호출은 사용자 키로 확인됨(표정·공부 자세 그림)
-- [x] 표정 그림·공부 자세 (2026-11-14): GPT 표정 그림(`expression_art.py`), 공부 자세 키보드 치기·필기·손 흔들기(`pose_art.py`, 몸 단계만 변환해 자세당 8.2분 → 4.8분). 변환을 사용자가 돌리는 동안 GPU 작업을 따로 돌리지 말 것(16GB RAM이라 같이 돌면 4배 느려지고 강제 종료됨)
-- [x] 눈 파츠 나누기 (2026-11-14): 피부 눈꺼풀 자동 생성, 속눈썹 위·아래·쌍꺼풀 선, 감기·웃는 눈을 변형만으로. 캐릭터 7명으로 확인(머리에 가린 눈, 단순 그림체의 쌍꺼풀 점은 약함)
-- [x] 입 파츠 나누기 (2026-11-15): 입 안·윗니·혀·아랫입술 선을 리거가 캐릭터 색으로 그림(AI 호출 없음), 말하기·웃기·오 입·세모 입을 변형으로. 캐릭터 8명 확인. 벌린 입 그림은 그대로 입 안으로 씀. 남은 것: 아랫니 없음, 점처럼 작은 입(see-through가 입을 거의 못 잡은 그림)은 작게 벌어짐
-- [x] 머리카락 다발 레이어·웃는 눈 (2026-11-15): 앞머리·뒷머리를 다발마다 레이어로 자름(이음새 없음, 뿌리는 같이), 웃을 때 눈 감는 정도(`smileEyes`, 눈 모양으로 자동)
-- [ ] 편집기 파츠 점검 화면 (파츠별 보기, 다시 만들기, 경계 고치기)
-- [x] GPU PC용 see-through (2026-11-14): `npm start`만 켜면 됨. 편집기에 그림을 놓으면 PSD 변환 → 자동 리깅 (처음 한 번 「설치하기」). 이 PC 실측: 설치 ~15분, 그림 한 장 ~20분 (nf4, VRAM 6.7GB)
-- [x] see-through 연동 (2026-11-13): 무료 Colab은 노트북 안에서 그림 올리기 → PSD 다운로드 → 편집기에 놓기 (터널 자동 연결은 무료 Colab 규정 위반이라 유료·GPU 컴퓨터용 선택 사항으로만). **실제 Colab GPU 실행은 아직 사용자가 확인 전**
+- **캡슐 백엔드**: `C:\Users\kkcc4\IdeaProjects\Backend_lab` (Spring). Live2D 모양의 계약: 모델은 `modelJsonUrl` + `scale`/`offsetX`/`offsetY`, 모션 `{group, file}`, 표정 `{name, file}`. 반응별 표정·모션은 DB(`live2d_reaction_maps`). 프론트는 카메라로 사용자의 얼굴과 손(손목 → 팔)을 매 프레임 따라 한다(`docs/specs/api.md` 18번).

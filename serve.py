@@ -1,6 +1,6 @@
 """Local static server for Capsule Model Studio (npm start).
 
-Serves the editor and the player demos from this folder to this PC only:
+Serves the v2 model viewer (/ -> /v2/viewer/) from this folder to this PC only:
 requests must come from localhost with a matching Host/Origin, dot-files and
 Python/batch sources are never served, and only GET/HEAD are allowed (plus one
 same-origin POST that installs see-through, below).
@@ -68,6 +68,12 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         if not self.same_origin():
+            return
+        if urlsplit(self.path).path == '/':
+            self.send_response(302)
+            self.send_header('Location', '/v2/viewer/')
+            self.send_header('Content-Length', '0')
+            self.end_headers()
             return
         if urlsplit(self.path).path == '/local-config.json':
             # Probed here (not from the page) so the editor never logs a failed connection.
@@ -288,8 +294,7 @@ def main():
     global SEETHROUGH_PORT
     SEETHROUGH_PORT = args.seethrough_port
     server.seethrough = None if args.no_seethrough else seethrough.Manager(args.port, port=args.seethrough_port)
-    print('Capsule Model Studio: ' + url)
-    print('Player demos: ' + url + 'engine/demo/')
+    print('Capsule Model Studio (v2 viewer): ' + url + 'v2/viewer/')
     if args.open_browser:
         webbrowser.open(url + ('?cam=1' if args.camera else ''))
     try:
