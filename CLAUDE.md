@@ -36,8 +36,6 @@
 | `v2/py/compose.py` | 계획 B 합치기: 상반신 PSD(몸) + 머리 크롭 PSD(얼굴, 고해상도) → 한 모델 |
 | `v2/py/pipeline.py` | 명령 하나 파이프라인: 다듬기 → GPT 상반신 원화 → 업스케일 → 몸 see-through → 머리 크롭 → 얼굴 see-through(+입·웃는 눈 GPT) → 리깅. `--from <단계>` |
 | `v2/py/render_bundle.py` | 묶음을 Python으로 그려 보기(엔진과 같은 규칙). `--sheet`로 주요 자세 한 장 |
-| `v2/showcase/` | **Aliving2D Studio** (창업경진대회용 작업 관리 화면, 데스크톱 툴 다크 테마): 메뉴·툴바(새 작업·에디터·플레이어·리깅 다시·중지), 프로젝트 목록, 뷰포트 탭(모델·레이어 분리 3D 펼치기·리깅 파츠·소스 이미지), 속성 패널(이름 바꾸기 = options.json `name`, 결과 수치, 리깅 옵션), 생성 작업 표(단계·장치·시간). 레이어 미리보기는 `v2/py/layer_preview.py` |
-| `v2/editor/` | **Aliving2D Editor** (스튜디오와 같은 다크 데스크톱 톤, 큐비즘 에디터 구성): 파츠·디포머 트리, 인스펙터, 색 묶음 파라미터(키폼 표시, 각도 XY 패드), 변형 격자 겹쳐 보기, 표정 저장·모션, **요청 패널**: 말로 쓴 요청 → `seethrough/model_edit.py`(OpenAI `gpt-5.4-mini`, 사용자 키) → 동작(파라미터 미리보기·표정 저장·모션·키폼 크기 `scale_param`(백업·되돌리기)·리깅 옵션 + 다시 리깅). serve.py `/api/v2/edit/plan|scale|undo`. 주소 `?ask=`로 요청 바로 보내기 |
 | `v2/studio/index.html` | 대시보드(`/`): 업로드, 단계 진행, 여기부터 다시, 멈추기, 작업별 옵션(귀 자동/보이기/숨기기), 뷰어, **파츠 분리 보기**(몸·얼굴 see-through 레이어 3D 펼치기·목록, 리깅 파츠) |
 | `v2/py/export_bundle.py` | 묶음 v2 쓰기 (`model.json` + `parts/*.png`), CLI |
 | `v2/py/gpt_image.py` | OpenAI 이미지 편집(키·모델은 `seethrough/redraw.py`) |
@@ -47,7 +45,7 @@
 | `v2/viewer/index.html` | 뷰어: 표정·모션 버튼, 대기 모션 상시(더하기, `?idle=0`), 아이우에오, 반응 시험, 슬라이더, 마우스 따라 보기, 자동 고개 돌리기, 자동 깜빡임(표정의 눈 뜸에 곱함), 숨쉬기, 손 흔들기, **카메라로 따라 하기**(FaceMesh → `lib/face-features.js`, Hands → `engine/tracking.js` → 팔). 주소 옵션 `?expr=`, `?motion=`, `?set=id:값,…`, `?blink=0`, `?breath=0` |
 | `v2/bundles/` | 묶음 (캐릭터 그림이라 git 제외) |
 | `serve.py` | `npm start` 로컬 서버. `/` → `/v2/studio/`(대시보드), `/api/v2/jobs`. see-through 설치·자동 실행(`seethrough/manager.py`) |
-| `seethrough/` | see-through 서버·설치(`server.py`, `manager.py`, `desktop.py`), 그림 다듬기 `prepare.py`, OpenAI 키 `redraw.py`, 변환 후 PSD 정리 `fix_psd.py`(서버가 씀), 에디터 요청 `model_edit.py`. v1의 표정 그림·공부 자세·Colab은 2026-11-17에 지움 |
+| `seethrough/` | see-through 서버·설치(`server.py`, `manager.py`, `desktop.py`), 그림 다듬기 `prepare.py`, OpenAI 키 `redraw.py`, 변환 후 PSD 정리 `fix_psd.py`(서버가 씀). v1의 표정 그림·공부 자세·Colab, 대회용 Studio·Editor(요청 패널)는 2026-11-17에 지움 |
 | `engine/tracking.js` | 카메라 손목 → 팔 값 (v1에서 남김, v2 엔진에 다시 연결할 것) |
 | `engine/reactions.default.json` | 캡슐 반응표 v2: trigger → 모션·표정 이름(내용은 모델 묶음 안), hold·talk·then·intensity·weight. 뷰어의 '반응 시험'으로 재생 |
 | `lib/vendor/` | MediaPipe FaceMesh·Hands 고정 버전 |

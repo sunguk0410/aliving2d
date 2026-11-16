@@ -45,7 +45,6 @@
     <button id="reactGo">반응 시험</button>
   </div>
   <div id="sliders"></div>
-  <a id="toEditor" href="#" style="display:inline-block;margin-top:10px">에디터 화면으로 열기 ↗</a>
   <button id="follow" aria-pressed="false">마우스 따라 보기</button>
   <button id="swing" aria-pressed="false">자동으로 고개 돌리기</button>
   <button id="blink" aria-pressed="true">자동 깜빡임</button>
@@ -67,7 +66,6 @@
   const q = new URLSearchParams(location.search);
   const url = q.get('model') || '../bundles/test/model.json';
   document.getElementById('name').textContent = url;
-  document.getElementById('toEditor').href = '../editor/?model=' + encodeURIComponent(url);
   const canvas = document.getElementById('c');
   const resize = () => {
     const r = canvas.getBoundingClientRect(), d = devicePixelRatio || 1;

@@ -189,54 +189,6 @@ class Handler(SimpleHTTPRequestHandler):
         m = getattr(self.server, 'seethrough', None)
         return m.info() if m else None
 
-    def _bundle_of(self, model_url):
-        """'../bundles/<id>/model.json' (as the editor knows it) -> the bundle folder, or None."""
-        m = re.fullmatch(r'(?:\.\./|/?v2/)?bundles/([A-Za-z0-9_-]{1,40})/model\.json(?:\?.*)?', model_url or '')
-        if not m:
-            return None, None
-        d = Path(ROOT) / 'v2' / 'bundles' / m.group(1)
-        return (d, m.group(1)) if (d / 'model.json').is_file() else (None, None)
-
-    def _edit(self, what):
-        """The editor's 「요청」 panel (seethrough/model_edit.py): plan = a request in words -> actions,
-        scale = keyforms of one parameter x factor, undo = the model.json before the last scale."""
-        import model_edit
-        try:
-            got = json.loads(self._body(65536) or b'{}')
-        except ValueError:
-            return self._json({'error': '잘못된 요청'}, 400)
-        d, mid = self._bundle_of(got.get('model'))
-        if d is None:
-            return self._json({'error': '모델을 찾지 못했습니다'}, 404)
-        if what == 'undo':
-            return self._json({'undone': model_edit.undo(str(d))})
-        if what == 'scale':
-            pid, f = got.get('param'), got.get('factor')
-            if not isinstance(pid, str) or not re.fullmatch(r'\w{1,40}', pid) or not isinstance(f, (int, float)) or not 0.3 <= f <= 2.0:
-                return self._json({'error': '잘못된 값'}, 400)
-            return self._json({'parts': model_edit.scale(str(d), pid, float(f))})
-        text = got.get('request')
-        if not isinstance(text, str) or not text.strip():
-            return self._json({'error': '요청이 비어 있습니다'}, 400)
-        if not redraw.key_info()['ready']:
-            return self._json({'error': 'OpenAI API 키가 없습니다'}, 409)
-        job = {}
-        jd = WORK / mid
-        try:
-            st = json.loads((jd / 'status.json').read_text(encoding='utf-8'))
-            opts = json.loads((jd / 'options.json').read_text(encoding='utf-8')) if (jd / 'options.json').is_file() else {}
-            job = {'rerig': (st.get('steps', {}).get('head') or {}).get('status') == 'done', 'id': mid,
-                   'extras': opts.get('extras', []), 'ears': opts.get('ears', True)}
-        except (OSError, ValueError):
-            pass
-        model = json.loads((d / 'model.json').read_text(encoding='utf-8'))
-        try:
-            out = model_edit.plan(text, model, got.get('history') or [], job)
-        except Exception as err:  # noqa: BLE001 - shown in the panel
-            return self._json({'error': str(err)[:400]}, 502)
-        out['job'] = job.get('id') if job.get('rerig') else None
-        return self._json(out)
-
     def _save_expression(self):
         """An expression the user set with the sliders: {name, label?, params: {id: value}, model?} or
         {name, delete: true}. Kept in v2/expressions.user.json (every model built later gets it) and, with model =
@@ -365,8 +317,6 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({'id': m.group(1)}, 202)
         if path == '/api/v2/expressions':
             return self._save_expression()
-        if path in ('/api/v2/edit/plan', '/api/v2/edit/scale', '/api/v2/edit/undo'):
-            return self._edit(path.rsplit('/', 1)[1])
         m = re.fullmatch(r'/api/v2/jobs/([A-Za-z0-9_-]{1,40})/options', path)
         if m and JOB_ID.fullmatch(m.group(1)):
             # per-job rig options, in their own file (the running pipeline rewrites status.json)

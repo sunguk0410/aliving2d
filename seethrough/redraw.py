@@ -1,6 +1,6 @@
 """
-The OpenAI key and image-edit endpoint shared by v2/py/gpt_image.py (pipeline pictures),
-seethrough/model_edit.py (the editor's request panel) and serve.py. Standard library only.
+The OpenAI key and image-edit endpoint shared by v2/py/gpt_image.py (pipeline pictures) and serve.py.
+Standard library only.
 
 The API key lives in <repo>/.local/openai.json on this PC only (git-ignored, never served);
 the editor only ever sees its last four characters.
