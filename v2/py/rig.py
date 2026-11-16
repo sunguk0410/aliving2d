@@ -158,14 +158,14 @@ class Rig:
                 p.keys[k] = {float(v): np.array(d, np.float32) for v, d in ks.items()}
 
 
-def load_psd(psd_path, depth_dir=None, grid=90, min_px=50):
+def load_psd(psd_path, depth_dir=None, grid=90, min_px=50, skip=None):
     """Parts from a see-through PSD (+ the per-part depth PNGs next to it, if any)."""
     psd = PSDImage.open(psd_path)
     H, W = psd.height, psd.width
     layers = [l for l in psd.descendants() if l.kind != 'group']
     parts = []
     for l in layers:                                             # psd-tools lists bottom -> top
-        if l.name in SKIP:
+        if l.name in (SKIP if skip is None else skip):
             continue
         im = Image.new('RGBA', (W, H))
         im.alpha_composite(l.topil().convert('RGBA'), (l.left, l.top))

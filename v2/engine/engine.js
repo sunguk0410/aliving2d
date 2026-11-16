@@ -78,6 +78,51 @@ void main() { o = texture(uTex, vUv); }`;
     return get(n - 1, n - 1, 0);
   }
 
+  /*
+   * Arms (the artisan's rotation deformers shoulder -> elbow): model.arms = {L|R: {S, E, W: [x, y] rest joints,
+   * out: -1 | 1 (which way is away from the body)}}. Parameters arm<s>X / arm<s>Y move the wrist from its rest
+   * place, in arm lengths (x outward, y up; tracking.js armParams), and a two-bone IK turns that into a shoulder
+   * angle and an elbow angle (radians, image coordinates, elbow kept on the outer side). Parts carry
+   * `bones`: [{arm, joint: 'wr' | 'el' | 'sh', w: [weight per control point]}], applied child first (wrist,
+   * elbow, shoulder). The wrist angle: the hand hangs (gives back 35 % of the forearm's turn) + hand<s>.
+   */
+  function solveArm(A, ax, ay) {
+    const [Sx, Sy] = A.S, [Ex, Ey] = A.E, [Wx, Wy] = A.W;
+    const L1 = Math.hypot(Ex - Sx, Ey - Sy), L2 = Math.hypot(Wx - Ex, Wy - Ey), reach = L1 + L2;
+    let Tx = Wx + ax * A.out * reach, Ty = Wy - ay * reach;
+    let dx = Tx - Sx, dy = Ty - Sy, d = Math.hypot(dx, dy) || 1e-6;
+    const dmin = Math.abs(L1 - L2) + 1e-3 * reach, dmax = reach;
+    const dc = Math.min(Math.max(d, dmin), dmax);
+    Tx = Sx + dx / d * dc; Ty = Sy + dy / d * dc;
+    const base = Math.atan2(Ty - Sy, Tx - Sx);
+    const a = Math.acos(Math.min(1, Math.max(-1, (L1 * L1 + dc * dc - L2 * L2) / (2 * L1 * dc))));
+    // two elbow choices: keep the one further out from the body
+    let best = null;
+    for (const sg of [1, -1]) {
+      const ang = base + sg * a, ex = Sx + Math.cos(ang) * L1, ey = Sy + Math.sin(ang) * L1;
+      const score = (ex - Sx) * A.out;
+      if (!best || score > best.score + 1e-6) best = { ang, ex, ey, score };
+    }
+    const wrap = t => Math.atan2(Math.sin(t), Math.cos(t));
+    const sh = wrap(best.ang - Math.atan2(Ey - Sy, Ex - Sx));
+    const fore = Math.atan2(Ty - best.ey, Tx - best.ex) - Math.atan2(Wy - Ey, Wx - Ex);
+    return { sh, el: wrap(fore - sh) };
+  }
+  // the hand hangs a little (gives back part of the forearm's turn) and hand<s> bends it +-40 deg
+  function handAngle(a, hand) { return -0.35 * (a.sh + a.el) + hand * 0.698; }
+
+  // Live2D standard parameter IDs -> [this engine's parameter, factor] (CAPSULE contract, docs/specs/api.md)
+  const LIVE2D = {
+    ParamAngleX: ['angleX', 1 / 30], ParamAngleY: ['angleY', 1 / 30], ParamAngleZ: ['angleZ', 1 / 30],
+    ParamEyeLOpen: ['eyeOpenL', 1], ParamEyeROpen: ['eyeOpenR', 1],
+    ParamEyeLSmile: ['eyeSmile', 1], ParamEyeRSmile: ['eyeSmile', 1],
+    ParamEyeBallX: ['eyeX', 1], ParamEyeBallY: ['eyeY', 1], ParamEyeBallForm: ['eyeBall', 1],
+    ParamBrowLY: ['browLY', 1], ParamBrowRY: ['browRY', 1], ParamBrowLAngle: ['browLAngle', 1], ParamBrowRAngle: ['browRAngle', 1],
+    ParamMouthForm: ['mouthForm', 1], ParamMouthOpenY: ['mouthOpen', 1], ParamCheek: ['cheek', 1],
+    ParamBodyAngleX: ['bodyX', 1 / 10], ParamBodyAngleY: ['bodyY', 1 / 10], ParamBodyAngleZ: ['bodyZ', 1 / 10],
+    ParamBreath: ['breath', 1],
+  };
+
   class Part {
     constructor(gl, spec, img, step) {
       this.spec = spec;
@@ -150,7 +195,7 @@ void main() { o = texture(uTex, vUv); }`;
     }
 
     // control displacements and opacity for the current parameters; moves the mesh
-    update(gl, params) {
+    update(gl, params, arms) {
       const cp = this.cp;
       cp.fill(0);
       for (const [id, k] of Object.entries(this.spec.keys)) {
@@ -159,6 +204,29 @@ void main() { o = texture(uTex, vUv); }`;
           const A = k.disp[a], B = k.disp[b];
           for (let i = 0; i < cp.length; i++) cp[i] += A[i] + (B[i] - A[i]) * t;
         }, v);
+      }
+      if (this.spec.bones && arms) {
+        if (!this.cpRest) {
+          const [bx0, by0, bx1, by1] = this.box, W = this.nx + 1;
+          this.cpRest = new Float32Array(this.ncp * 2);
+          for (let j = 0; j <= this.ny; j++) for (let i = 0; i <= this.nx; i++) {
+            this.cpRest[(j * W + i) * 2] = bx0 + (bx1 - bx0) * i / this.nx;
+            this.cpRest[(j * W + i) * 2 + 1] = by0 + (by1 - by0) * j / this.ny;
+          }
+        }
+        const pr = this.cpRest, rx = new Float32Array(pr);
+        for (const b of this.spec.bones) {                  // elbow first, then shoulder (child before parent)
+          const A = this.armsJson[b.arm], ang = arms[b.arm] && arms[b.arm][b.joint];
+          if (!A || !ang) continue;
+          const [px, py] = b.joint === 'el' ? A.E : b.joint === 'wr' ? A.W : A.S;
+          for (let i = 0; i < this.ncp; i++) {
+            const t = ang * b.w[i];
+            if (!t) continue;
+            const c = Math.cos(t), sn = Math.sin(t), x = rx[i * 2] - px, y = rx[i * 2 + 1] - py;
+            rx[i * 2] = px + x * c - y * sn; rx[i * 2 + 1] = py + x * sn + y * c;
+          }
+        }
+        for (let i = 0; i < cp.length; i++) cp[i] += rx[i] - pr[i];
       }
       let alpha = 1;
       for (const [id, o] of Object.entries(this.spec.opacity || {})) {
@@ -215,7 +283,63 @@ void main() { o = texture(uTex, vUv); }`;
       this.background = [1, 1, 1, 1];
     }
 
-    set(id, v) { this.params[id] = v; }
+    /*
+     * set / get also take Live2D's standard parameter IDs (what CAPSULE's face / hand tracking writes), in
+     * Live2D's units: ParamAngleX 30 = this model's angleX 1, ParamBodyAngleX 10 = bodyX 1, and so on.
+     */
+    set(id, v) {
+      if (!(id in this.params) && LIVE2D[id]) { const [to, k] = LIVE2D[id]; if (to in this.params) this.params[to] = v * k; return; }
+      this.params[id] = v;
+    }
+    get(id) {
+      if (!(id in this.params) && LIVE2D[id]) { const [to, k] = LIVE2D[id]; return (this.params[to] ?? 0) / k; }
+      return this.params[id];
+    }
+
+    /*
+     * Hair physics: each entry is a two-stage pendulum. Stage 1 follows the drive (the head's angles, weighted),
+     * stage 2 follows stage 1, so the tip arrives a beat late, overshoots and settles. Its lag behind the drive
+     * (times gain, plus a faint breeze) is written into the entry's parameter (a lock's sway keyforms).
+     */
+    step(dt) {
+      const list = this.json.physics || [];
+      if (!list.length) return;
+      if (!this.phys) this.phys = list.map(() => ({ p1: 0, v1: 0, p2: 0, v2: 0, init: false }));
+      this.time = (this.time || 0) + dt;
+      const n = Math.max(1, Math.ceil(Math.min(dt, 0.1) / (1 / 120)));
+      const h = Math.min(dt, 0.1) / n;
+      list.forEach((e, i) => {
+        const s = this.phys[i];
+        let drive = 0;
+        for (const [id, w] of Object.entries(e.inputs || {})) drive += (this.params[id] ?? 0) * w;
+        if (!s.init) { s.p1 = s.p2 = drive; s.init = true; }
+        const w0 = 2 * Math.PI * (e.freq || 1.5), z = e.damping ?? 0.15;
+        for (let k = 0; k < n; k++) {
+          s.v1 += (w0 * w0 * (drive - s.p1) - 2 * z * w0 * s.v1) * h; s.p1 += s.v1 * h;
+          s.v2 += (w0 * w0 * (s.p1 - s.p2) - 2 * z * w0 * s.v2) * h; s.p2 += s.v2 * h;
+        }
+        const breeze = (e.wind || 0) * (Math.sin(this.time * 1.3 + (e.seed || 0) * 1.7) * 0.6 + Math.sin(this.time * 2.9 + (e.seed || 0) * 0.9) * 0.4);
+        this.params[e.param] = Math.max(-1, Math.min(1, (s.p2 - drive) * (e.gain || 1.5) + breeze));
+      });
+    }
+
+    /** a warp grid's control points now (model pixels), row by row: (nx + 1) x (ny + 1) - for editors to draw */
+    controlPoints(p) {
+      const [bx0, by0, bx1, by1] = p.box, W = p.nx + 1, out = new Float32Array(p.ncp * 2);
+      for (let j = 0; j <= p.ny; j++) for (let i = 0; i <= p.nx; i++) {
+        const k = j * W + i;
+        out[k * 2] = bx0 + (bx1 - bx0) * i / p.nx + p.cp[k * 2];
+        out[k * 2 + 1] = by0 + (by1 - by0) * j / p.ny + p.cp[k * 2 + 1];
+      }
+      return out;
+    }
+
+    /** model pixels -> CSS pixels on the canvas (for overlays drawn over it) */
+    toScreen(x, y) {
+      const [W, H] = this.json.canvas, [sx, sy, ox, oy] = this.view, c = this.gl.canvas, d = c.width / (c.clientWidth || c.width);
+      const cx = (x / W * 2 - 1) * sx + ox, cy = -(y / H * 2 - 1) * sy + oy;
+      return [(cx + 1) / 2 * c.width / d, (1 - cy) / 2 * c.height / d];
+    }
 
     // view: zoom (1 = canvas fits), centre in model pixels
     setView(zoom, cx, cy) {
@@ -290,7 +414,17 @@ void main() { o = texture(uTex, vUv); }`;
 
     draw() {
       const gl = this.gl, c = gl.canvas;
-      for (const p of this.parts) p.update(gl, this.params);
+      let arms = null;
+      if (this.json.arms) {
+        arms = {};
+        for (const [side, A] of Object.entries(this.json.arms)) {
+          const ax = this.params['arm' + side + 'X'] ?? 0, ay = this.params['arm' + side + 'Y'] ?? 0;
+          const hand = this.params['hand' + side] ?? 0;
+          arms[side] = ax || ay ? solveArm(A, ax, ay) : { sh: 0, el: 0 };
+          arms[side].wr = handAngle(arms[side], hand + (this.params['handLag' + side] ?? 0) * 0.6);
+        }
+      }
+      for (const p of this.parts) { p.armsJson = this.json.arms; p.update(gl, this.params, arms); }
       gl.viewport(0, 0, c.width, c.height);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.clearColor(...this.background);
@@ -312,7 +446,7 @@ void main() { o = texture(uTex, vUv); }`;
       const parts = this.parts;
       for (let i = 0; i < parts.length;) {
         const p = parts[i];
-        if (p.maskOnly) { i++; continue; }
+        if (p.maskOnly || p.hidden) { i++; continue; }   // hidden: switched off in an editor's part list
         if (!p.group) {
           if (p.alpha > 0.001) {
             gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -324,7 +458,7 @@ void main() { o = texture(uTex, vUv); }`;
         // a group: sum the members (premultiplied * opacity) offscreen, then composite once
         let j = i;
         while (j < parts.length && parts[j].group === p.group) j++;
-        const members = parts.slice(i, j).filter(m => m.alpha > 0.001 && !m.maskOnly);
+        const members = parts.slice(i, j).filter(m => m.alpha > 0.001 && !m.maskOnly && !m.hidden);
         if (members.length === 1 && members[0].alpha >= 0.999) {
           gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
           this.drawPart(members[0]);
@@ -356,8 +490,17 @@ void main() { o = texture(uTex, vUv); }`;
     const base = url.replace(/[^/]*$/, '');
     const imgs = await Promise.all(json.parts.map(p => loadImage(base + p.texture)));
     const parts = json.parts.map((p, i) => new Part(gl, p, imgs[i], opts.meshStep || 12));
-    return new Model(gl, json, parts);
+    const m = new Model(gl, json, parts);
+    // tracking.js armParams reads model.ARMS (shoulder, wrist, bone lengths, outward sign)
+    if (json.arms) {
+      m.ARMS = {};
+      for (const [s, A] of Object.entries(json.arms)) {
+        m.ARMS[s] = { S: { x: A.S[0], y: A.S[1] }, W: { x: A.W[0], y: A.W[1] }, out: A.out,
+                      L1: Math.hypot(A.E[0] - A.S[0], A.E[1] - A.S[1]), L2: Math.hypot(A.W[0] - A.E[0], A.W[1] - A.E[1]) };
+      }
+    }
+    return m;
   }
 
-  global.CapsuleV2 = { load };
+  global.CapsuleV2 = { load, solveArm, LIVE2D };
 })(typeof window !== 'undefined' ? window : globalThis);

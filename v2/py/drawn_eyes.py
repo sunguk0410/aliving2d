@@ -19,6 +19,7 @@ from scipy import ndimage as ndi
 sys.path.insert(0, os.path.dirname(__file__))
 from rig import Part  # noqa: E402
 from mouth_rig import load, align  # noqa: E402
+from blink_rig import smile_keys  # noqa: E402
 
 
 def add_drawn_eyes(rig, src_path, drawn_path, param='eyeSmile', name='smileeye', fade=(0.8, 0.97), grid=24):
@@ -68,6 +69,7 @@ def add_drawn_eyes(rig, src_path, drawn_path, param='eyeSmile', name='smileeye',
         else:
             keep = grown
         keep = ndi.binary_closing(keep, iterations=1)
+        fit_smile_line(rig, s, keep)
         stroke = np.clip((dist - 0.04) / 0.10, 0, 1) * keep
         stroke = np.maximum(stroke, ndi.binary_erosion(keep, iterations=1) * 1.0)
         stroke = ndi.gaussian_filter(stroke.astype(np.float32), 0.5)
@@ -83,3 +85,43 @@ def add_drawn_eyes(rig, src_path, drawn_path, param='eyeSmile', name='smileeye',
                    q.name.rsplit('_', 1)[0] in ('lash_upper', 'lash_lower', 'lash_crease', 'eyelash', 'eyelid', 'eyelid_low'))
         rig.parts.insert(last + 1, p)
     return rig
+
+
+def fit_smile_line(rig, s, stroke):
+    """The deformed lids lead up to the drawing, so they should meet where the drawn ^ ^ lid line lies, or the
+    cross-fade shows two arches. Meeting line per column = lower edge of the first (topmost) stroke run, i.e. the
+    underside of the drawn lash arch; smoothed with a low-order fit, used only when it covers most of the eye.
+    Columns past the drawn arch keep the rule's arch, blended in."""
+    lines = getattr(rig, 'smile_lines', {}).get(s)
+    if lines is None:
+        return None
+    vis, bot, x0, x1 = lines['vis'], lines['bot'], lines['x0'], lines['x1']
+    xs, ys = [], []
+    for x in range(x0, x1 + 1):
+        col = np.nonzero(stroke[:, x])[0]
+        if len(col) < 2:
+            continue
+        run_end = col[0]
+        for y in col[1:]:
+            if y - run_end > 1:
+                break
+            run_end = y
+        lo, hi = vis[x] - 0.5 * (bot[x] - vis[x]), bot[x]
+        if np.isfinite(lo) and lo <= run_end <= hi:
+            xs.append(x)
+            ys.append(run_end)
+    if len(xs) < 0.6 * (x1 - x0 + 1):
+        return None
+    xs, ys = np.float64(xs), np.float64(ys)
+    ys = ndi.median_filter(ys, size=5)
+    c = np.polyfit(xs, ys, 4 if len(xs) > 30 else 2)
+    xa = np.arange(len(vis), dtype=np.float64)
+    arch = np.polyval(c, np.clip(xa, xs.min(), xs.max()))
+    # the rule's arch, for the ends the drawing does not reach
+    u = np.clip((xa - x0) / max(1, x1 - x0), 0, 1)
+    rule = vis + (bot - vis) * (0.12 + 0.88 * np.abs(2 * u - 1) ** 1.6)
+    w = np.clip(np.minimum(xa - xs.min(), xs.max() - xa) / 6.0 + 1, 0, 1)
+    smile_y = np.where(np.isfinite(vis), w * arch + (1 - w) * rule, rule)
+    smile_y = np.clip(smile_y, vis - 0.3 * (bot - vis), bot)
+    smile_keys(lines, smile_y)
+    return smile_y

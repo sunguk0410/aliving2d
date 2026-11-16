@@ -172,12 +172,99 @@ def lid_part(name, white_m, colour, grid, shade_bottom=True, skin=None):
     return Part(name, rgba, None, grid)
 
 
+def clean_skin(face_rgba, white_m, size=15):
+    """The face layer around one eye with thin strokes taken out: see-through sometimes paints strands of the
+    bangs or their shadows into the face layer, and a lid made of those pixels would carry a stripe down over
+    the eye. A median filter (wider than a strand) keeps the skin's soft shading and drops the strands."""
+    ys, xs = np.nonzero(white_m)
+    h = ys.max() - ys.min() + 1
+    m = 2 * h + size
+    y0, y1 = max(0, ys.min() - m), min(white_m.shape[0], ys.max() + m)
+    x0, x1 = max(0, xs.min() - m), min(white_m.shape[1], xs.max() + m)
+    out = face_rgba.copy()
+    roi = face_rgba[y0:y1, x0:x1, :3]
+    med = np.stack([ndi.median_filter(roi[..., c], size=size) for c in range(3)], -1)
+    out[y0:y1, x0:x1, :3] = ndi.gaussian_filter(med, (1.5, 1.5, 0))
+    return out
+
+
+def smile_keys(lines, smile_y):
+    """Put the eyeSmile keys of one eye's lids on the meeting line smile_y (one y per image column)."""
+    for part in lines['upper']:
+        part.keys['eyeSmile'][1.0] = column_disp(part, smile_y - lines['vis'])
+    for part in lines['lower']:
+        part.keys['eyeSmile'][1.0] = column_disp(part, smile_y - lines['bot'])
+
+
+def column_disp(part, dy):
+    P = part.warp.rest
+    d = np.zeros_like(P)
+    d[..., 1] = at(dy, P[..., 0])
+    return d.astype(np.float32)
+
+
 def at(arr, x):
     return arr[np.clip(np.round(x).astype(int), 0, len(arr) - 1)]
 
 
+def crease_apart(up_w, cr_w, lash_a, touch=2):
+    """The crease is a line of its own with skin between it and the lashes. A 'crease' piece that touches the
+    upper lash is a piece of the lash (a thick lash, a strand drawn into it) and closes with it; left on the
+    crease it would stay up and leave a hole in the closing lash."""
+    cm = (cr_w * lash_a) > 0.3
+    um = ndi.binary_dilation((up_w * lash_a) > 0.3, iterations=touch)
+    lab, n = ndi.label(cm)
+    up_w, cr_w = up_w.copy(), cr_w.copy()
+    for i in range(1, n + 1):
+        comp = lab == i
+        if (comp & um).any():
+            region = ndi.binary_dilation(comp, iterations=1)
+            up_w[region] = np.maximum(up_w[region], cr_w[region])
+            cr_w[region] = 0
+    return up_w, cr_w
+
+
+def fill_lash_under_hair(lash, hair_a, max_gap):
+    """see-through leaves the lash out where a strand of the bangs crosses it; the strand hides the hole at rest,
+    but a closing lid pulls the lash out from under it. Draw the lash in (the artisan's 描き足し): in each row,
+    hair-covered pixels between two lash pixels at most `max_gap` apart take the colour between them."""
+    a = lash.rgba[..., 3]
+    ys, xs = np.nonzero(a > 0.5)
+    if len(xs) < 20:
+        return 0
+    hair = ndi.binary_dilation(hair_a > 0.5, iterations=2)
+    out = lash.rgba.copy()
+    n = 0
+    for y in range(ys.min(), ys.max() + 1):
+        have = np.nonzero(a[y] > 0.5)[0]
+        if len(have) < 2:
+            continue
+        cand = np.nonzero((a[y] < 0.5) & hair[y])[0]
+        cand = cand[(cand > have[0]) & (cand < have[-1])]
+        if not len(cand):
+            continue
+        r = have[np.searchsorted(have, cand)]
+        l = have[np.searchsorted(have, cand) - 1]
+        ok = (r - l) <= max_gap
+        cand, l, r = cand[ok], l[ok], r[ok]
+        t = ((cand - l) / np.maximum(1, r - l))[:, None]
+        out[y, cand] = out[y, l] * (1 - t) + out[y, r] * t
+        n += len(cand)
+    lash.rgba = out
+    return n
+
+
 def add_blink(rig, grid=24):
     byname = {p.name: p for p in rig.parts}
+    hairs = [p.rgba[..., 3] for p in rig.parts if p.name == 'front hair']
+    if hairs:
+        hair_a = np.max(hairs, 0)
+        for s in ('r', 'l'):
+            lash, white = byname.get(f'eyelash_{s}'), byname.get(f'eyewhite_{s}')
+            if lash is not None and white is not None:
+                xs = np.nonzero((white.rgba[..., 3] > 0.5).any(0))[0]
+                if len(xs):
+                    fill_lash_under_hair(lash, hair_a, max(6, int(0.18 * (xs.max() - xs.min()))))
     face = byname.get('face')
     for s, param in (('r', 'eyeOpenR'), ('l', 'eyeOpenL')):
         white, lash = byname.get(f'eyewhite_{s}'), byname.get(f'eyelash_{s}')
@@ -200,6 +287,7 @@ def add_blink(rig, grid=24):
 
         # lashes: upper / lower / crease
         up_w, lo_w, cr_w = split_lashes_corners(la, wm)
+        up_w, cr_w = crease_apart(up_w, cr_w, la)
         parts = {}
         for key, w in (('lash_crease', cr_w), ('lash_lower', lo_w), ('lash_upper', up_w)):
             rgba = lash.rgba.copy()
@@ -232,11 +320,13 @@ def add_blink(rig, grid=24):
         yy, xx = np.mgrid[0:H, 0:W]
         cols = (xx >= x0) & (xx <= x1)
 
+        skin = clean_skin(face.rgba, wm)
+
         def skin_layer(y_from, y_to, shift):
             m = cols & (yy >= at(y_from, xx)) & (yy <= at(y_to, xx))
             sy = np.clip(np.round(yy + at(shift, xx)).astype(int), 0, H - 1)
             rgba = np.zeros((H, W, 4), np.float32)
-            src = face.rgba[sy, xx]
+            src = skin[sy, xx]
             rgba[..., :3] = np.where(src[..., 3:4] > 0.5, src[..., :3], col)
             rgba[..., 3] = m
             return rgba
@@ -267,6 +357,10 @@ def add_blink(rig, grid=24):
             z_l = np.zeros_like(low.warp.rest)
             low.keys[param] = {0.0: column(low, up_close), 1.0: z_l}
             low.keys['eyeSmile'] = {0.0: z_l, 1.0: column(low, up_smile)}
+        # kept for drawn_eyes.fit_smile_line: the lids' smile keys can be moved onto a drawn ^ ^ arch
+        lines = rig.__dict__.setdefault('smile_lines', {})
+        lines[s] = dict(vis=vis, bot=bot, x0=x0, x1=x1,
+                        upper=[U, lid], lower=[Lo, low] if Lo is not None else [low])
         if C is not None:
             z_c = np.zeros_like(C.warp.rest)
             C.keys[param] = {0.0: column(C, down_close * 0.12), 1.0: z_c}

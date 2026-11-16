@@ -16,7 +16,33 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'seethrou
 import redraw  # noqa: E402
 
 
-def edit(image_bytes, prompt, size='1024x1024', n=1, quality='high'):
+def edit(image_bytes, prompt, size='1024x1024', n=1, quality='high', deadline=300, tries=3):
+    """Image edit with a hard time limit per attempt (a stalled connection can trickle forever under urllib's
+    per-read timeout) and a few retries."""
+    import threading
+    last = None
+    for attempt in range(tries):
+        box = {}
+
+        def call():
+            try:
+                box['out'] = _edit_once(image_bytes, prompt, size, n, quality)
+            except Exception as err:  # noqa: BLE001
+                box['err'] = err
+        t = threading.Thread(target=call, daemon=True)
+        t.start()
+        t.join(deadline)
+        if 'out' in box:
+            return box['out']
+        last = box.get('err') or TimeoutError(f'OpenAI가 {deadline // 60}분 안에 답하지 않았습니다')
+        msg = str(last)
+        if 'HTTP 400' in msg or 'HTTP 401' in msg:      # a refused prompt / a bad key: retrying will not help
+            break
+        print(f'GPT attempt {attempt + 1} failed: {msg[:200]}', file=sys.stderr, flush=True)
+    raise RuntimeError(str(last))
+
+
+def _edit_once(image_bytes, prompt, size, n, quality):
     key = redraw._key()
     mime = redraw.mime_of(image_bytes)
     body = json.dumps({

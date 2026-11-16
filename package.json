@@ -8,8 +8,7 @@
     "start": "python serve.py --port 8000",
     "test": "npm run test:python",
     "test:python": "python -m unittest discover -s tests -p \"test_*.py\"",
-    "seethrough": "python seethrough/desktop.py",
-    "build:colab": "python seethrough/build_colab.py"
+    "seethrough": "python seethrough/desktop.py"
   },
   "engines": {
     "node": ">=18"

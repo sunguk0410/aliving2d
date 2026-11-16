@@ -20,6 +20,9 @@
   button { margin-top: 12px; padding: 6px 10px; border: 1px solid var(--line); background: #fafafa; border-radius: 6px; cursor: pointer; }
   button[aria-pressed=true] { background: #222; color: #fff; }
   #err { color: #b00020; white-space: pre-wrap; }
+  .exprs { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+  .exprs button { padding: 3px 8px; font-size: 12px; }
+  .exprs button[aria-pressed="true"] { outline: 2px solid currentColor; }
 </style>
 </head>
 <body>
@@ -27,21 +30,44 @@
 <aside>
   <h1>v2 모델 보기</h1>
   <div class="quiet" id="name"></div>
+  <div id="exprs" class="exprs"></div>
+  <div class="exprs" id="saveBox">
+    <input id="exprName" placeholder="이름 (smile)" size="9" aria-label="표정 이름 (영문)">
+    <input id="exprLabel" placeholder="표시 이름" size="7" aria-label="표시 이름">
+    <button id="exprSave">지금 표정 저장</button>
+    <button id="exprDel">삭제</button>
+  </div>
+  <div class="quiet" id="saveInfo">슬라이더로 맞춘 얼굴을 표정으로 저장 (이 모델 + 앞으로 만들 모델 모두)</div>
+  <div id="motions" class="exprs"></div>
+  <div class="exprs" id="reactBox" hidden>
+    <select id="reactTrig"></select>
+    <select id="reactInt"><option value="1">1 눈치</option><option value="2">2 말 걸기</option><option value="3">3 서운함</option></select>
+    <button id="reactGo">반응 시험</button>
+  </div>
   <div id="sliders"></div>
+  <a id="toEditor" href="#" style="display:inline-block;margin-top:10px">에디터 화면으로 열기 ↗</a>
   <button id="follow" aria-pressed="false">마우스 따라 보기</button>
   <button id="swing" aria-pressed="false">자동으로 고개 돌리기</button>
   <button id="blink" aria-pressed="true">자동 깜빡임</button>
+  <button id="breathe" aria-pressed="true">숨쉬기</button>
+  <button id="wave" aria-pressed="false">손 흔들기</button>
+  <button id="idle" aria-pressed="true">대기 동작</button>
+  <button id="cam" aria-pressed="false">카메라로 따라 하기</button>
+  <div class="quiet" id="camInfo"></div>
   <label class="row"><span>확대</span><span id="zv">1.0</span></label>
   <input id="zoom" type="range" min="0.6" max="3" step="0.05" value="1">
   <p class="quiet">주소 뒤에 <code>?model=../bundles/이름/model.json</code></p>
   <div id="err"></div>
 </aside>
-<script src="../engine/engine.js"></script>
+<script src="../engine/engine.js?v=3"></script>
+<script src="../../lib/face-features.js"></script>
+<script src="../../engine/tracking.js"></script>
 <script>
 (async () => {
   const q = new URLSearchParams(location.search);
   const url = q.get('model') || '../bundles/test/model.json';
   document.getElementById('name').textContent = url;
+  document.getElementById('toEditor').href = '../editor/?model=' + encodeURIComponent(url);
   const canvas = document.getElementById('c');
   const resize = () => {
     const r = canvas.getBoundingClientRect(), d = devicePixelRatio || 1;
@@ -58,6 +84,7 @@
   const box = document.getElementById('sliders');
   const inputs = {};
   for (const p of m.json.params) {
+    if (p.hidden) continue;                                   // driven by physics
     const lab = document.createElement('label');
     lab.className = 'row';
     lab.innerHTML = `<span>${p.id}</span><span id="v_${p.id}">0.00</span>`;
@@ -67,6 +94,172 @@
     box.append(lab, inp);
     inputs[p.id] = inp;
   }
+  // expressions (face_expr.py): eased over 0.3 s; parameters an expression does not name go back to default
+  const defaults = Object.fromEntries(m.json.params.map(p => [p.id, p.default ?? 0]));
+  let expr = {}, exprFrom = {}, exprStart = -1;
+  const exprIds = new Set((m.json.expressions || []).flatMap(e => Object.keys(e.params)));
+  const exprBox = document.getElementById('exprs');
+  const setExpr = (e, btn) => {
+    exprFrom = Object.fromEntries([...exprIds].map(id => [id, id.startsWith('eyeOpen') ? (expr[id] ?? 1) : m.params[id]]));
+    expr = e ? e.params : {};
+    exprStart = performance.now();
+    for (const b of exprBox.children) b.setAttribute('aria-pressed', String(b === btn));
+  };
+  const addExprButton = e => {
+    const b = document.createElement('button');
+    b.textContent = e.label || e.name; b.title = e.name;
+    b.setAttribute('aria-pressed', String(e.name === 'neutral'));
+    b.onclick = () => { setExpr(e, b); document.getElementById('exprName').value = e.name; document.getElementById('exprLabel').value = e.label || ''; };
+    exprBox.append(b);
+    return b;
+  };
+  for (const e of m.json.expressions || []) addExprButton(e);
+  // save the face set with the sliders as an expression (serve.py POST /api/v2/expressions): every slider away
+  // from its default, except the head / body pose and the arms (an expression is the face only)
+  const POSE = /^(angle|body|breath|arm|hand)/;
+  const saveExpr = async del => {
+    const info = document.getElementById('saveInfo');
+    const name = document.getElementById('exprName').value.trim(), label = document.getElementById('exprLabel').value.trim();
+    if (!/^[A-Za-z0-9_-]{1,40}$/.test(name)) { info.textContent = '이름은 영문·숫자로 (예: smile, angry2)'; return; }
+    const params = {};
+    if (!del) {
+      for (const p of m.json.params) {
+        if (p.hidden || POSE.test(p.id)) continue;
+        // with the auto blink on, the eyes' own value is the expression's (the blink keeps rewriting the slider)
+        const blinking = p.id.startsWith('eyeOpen') && blinkBtn.getAttribute('aria-pressed') === 'true';
+        const v = blinking ? (expr[p.id] ?? 1) : m.params[p.id], d = p.default ?? 0;
+        if (Math.abs(v - d) > 0.005 || p.id.startsWith('eyeOpen')) params[p.id] = Math.round(v * 1000) / 1000;
+      }
+    }
+    try {
+      const r = await fetch('/api/v2/expressions', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(del ? { name, delete: true, model: url } : { name, label: label || name, params, model: url }) });
+      const j = await r.json();
+      if (!r.ok) { info.textContent = j.error || '저장 실패'; return; }
+    } catch (e) { info.textContent = '저장 실패 (npm start 서버에서 열어야 저장됩니다)'; return; }
+    const list = m.json.expressions = (m.json.expressions || []).filter(e => e.name !== name);
+    for (const b of [...exprBox.children]) if (b.title === name) b.remove();
+    if (del) { info.textContent = `「${name}」 삭제함`; return; }
+    const e = { name, label: label || name, params };
+    list.push(e);
+    for (const id of Object.keys(params)) exprIds.add(id);
+    setExpr(e, addExprButton(e));
+    info.textContent = `「${label || name}」 저장함 (${Object.keys(params).length}개 값)`;
+  };
+  document.getElementById('exprSave').onclick = () => saveExpr(false);
+  document.getElementById('exprDel').onclick = () => saveExpr(true);
+  // motions (motions.py): linear curves over the parameters, faded in / out over 0.3 s; 'Idle' loops
+  let motion = null;
+  const motionBox = document.getElementById('motions');
+  const playMotion = (mo, btn) => {
+    if (motion && motion.mo === mo && mo.loop) { motion.stopAt = performance.now(); return; }
+    // the base under the motion: what the parameter was when it started, unless something else (face, camera,
+    // expression, blink) writes it again every frame - then that fresh value
+    const base = Object.fromEntries(Object.keys(mo.curves).map(id => [id, motion && motion.base && id in motion.base ? motion.base[id] : m.params[id]]));
+    motion = { mo, start: performance.now(), stopAt: null, btn, base, wrote: {} };
+    for (const b of motionBox.children) b.setAttribute('aria-pressed', String(b === btn));
+  };
+  // the Idle motion runs underneath all the time (added to whatever the face / camera / mouse give)
+  const idleBtn = document.getElementById('idle');
+  idleBtn.onclick = () => toggle(idleBtn);
+  if (q.get('idle') === '0') idleBtn.setAttribute('aria-pressed', 'false');
+  const idleMo = (m.json.motions || []).find(x => x.group === 'Idle');
+  idleBtn.hidden = !idleMo;
+  let idleW = 0, idleT0 = performance.now(), idleLast = {};
+  const idleFrame = now => {
+    if (!idleMo) return;
+    const on = idleBtn.getAttribute('aria-pressed') === 'true' && !motion;
+    idleW += ((on ? 1 : 0) - idleW) * 0.05;
+    const t = ((now - idleT0) / 1000) % idleMo.duration;
+    for (const [id, keys] of Object.entries(idleMo.curves)) {
+      if (!(id in m.params)) continue;
+      // take back last frame's offset if nobody rewrote the parameter, then add this frame's
+      const prev = idleLast[id];
+      const base = prev && m.params[id] === prev.v ? prev.base : m.params[id];
+      const v = base + curveAt(keys, t) * idleW;
+      m.set(id, v); idleLast[id] = { v, base };
+    }
+  };
+  for (const mo of m.json.motions || []) {
+    if (mo.group === 'Idle') continue;
+    const b = document.createElement('button');
+    b.textContent = '▶ ' + (mo.label || mo.name); b.title = mo.name + ' (' + mo.group + ')';
+    b.setAttribute('aria-pressed', 'false');
+    b.onclick = () => playMotion(mo, b);
+    motionBox.append(b);
+  }
+  // a i u e o (model.json vowels, face_expr.py VOWELS): a short sequence built as a motion
+  if (m.json.vowels) {
+    const b = document.createElement('button');
+    b.textContent = '▶ 아이우에오'; b.setAttribute('aria-pressed', 'false');
+    const seq = ['a', 'i', 'u', 'e', 'o'], step = 0.42, curves = {};
+    for (const id of ['mouthOpen', 'mouthWide', 'mouthForm']) curves[id] = [[0, 0]];
+    seq.forEach((v, i) => {
+      for (const id of Object.keys(curves)) {
+        const val = m.json.vowels[v][id] ?? 0;
+        curves[id].push([0.12 + i * step, val], [0.12 + i * step + 0.26, val]);
+      }
+    });
+    for (const id of Object.keys(curves)) curves[id].push([0.2 + seq.length * step, 0]);
+    const mo = { name: 'aiueo', label: '아이우에오', group: 'Tap', duration: 0.2 + seq.length * step, loop: false, curves };
+    b.onclick = () => playMotion(mo, b);
+    motionBox.append(b);
+  }
+  window.playMotion = name => { const i = (m.json.motions || []).findIndex(x => x.name === name); if (i >= 0) playMotion(m.json.motions[i], motionBox.children[i]); };
+  const curveAt = (keys, t) => {
+    if (t <= keys[0][0]) return keys[0][1];
+    for (let i = 1; i < keys.length; i++) if (t <= keys[i][0]) {
+      const [t0, v0] = keys[i - 1], [t1, v1] = keys[i];
+      return v0 + (v1 - v0) * (t - t0) / Math.max(1e-6, t1 - t0);
+    }
+    return keys[keys.length - 1][1];
+  };
+  const motionFrame = now => {
+    if (!motion) return;
+    const { mo } = motion, el = (now - motion.start) / 1000;
+    let t = mo.loop ? el % mo.duration : el;
+    let w = Math.min(1, el / 0.3);
+    if (!mo.loop && el > mo.duration) w = Math.max(0, 1 - (el - mo.duration) / 0.3);
+    if (motion.stopAt) w = Math.min(w, Math.max(0, 1 - (now - motion.stopAt) / 300));
+    if (w <= 0) {
+      for (const id of Object.keys(mo.curves)) if (id in m.params && m.params[id] === motion.wrote[id]) { m.set(id, motion.base[id]); if (inputs[id]) inputs[id].value = motion.base[id]; }
+      motion.btn && motion.btn.setAttribute('aria-pressed', 'false'); motion = null; return;
+    }
+    t = Math.min(t, mo.duration);
+    for (const [id, keys] of Object.entries(mo.curves)) {
+      if (!(id in m.params)) continue;
+      const fresh = motion.wrote[id] === undefined || m.params[id] !== motion.wrote[id];
+      const b = fresh && motion.wrote[id] !== undefined ? m.params[id] : motion.base[id];
+      const v = b * (1 - w) + curveAt(keys, t) * w;
+      m.set(id, v); motion.wrote[id] = v; if (inputs[id]) inputs[id].value = v;
+    }
+  };
+  // CAPSULE reactions (engine/reactions.default.json v2): trigger -> motion + expression (+ talking), then back
+  let reactTimer = null;
+  const runReaction = (table, trig, intensity) => {
+    let cands = table.reactions[trig] || [];
+    const byInt = cands.filter(c => c.intensity === intensity);
+    if (byInt.length) cands = byInt; else cands = cands.filter(c => c.intensity == null);
+    if (!cands.length) return;
+    let r = Math.random() * cands.reduce((a, c) => a + (c.weight || 1), 0), c = cands[0];
+    for (const x of cands) { r -= x.weight || 1; if (r <= 0) { c = x; break; } }
+    clearTimeout(reactTimer);
+    if (c.expression) window.setExpression(c.expression);
+    const mo = (m.json.motions || []).find(x => x.name === c.motion);
+    if (mo) window.playMotion(mo.name);
+    const after = mo ? mo.duration * 1000 : 0;
+    if (c.talk) setTimeout(() => window.playMotion('talk'), after);
+    reactTimer = setTimeout(() => window.setExpression(c.then || 'neutral'), Math.max(c.hold || 0, after + (c.talk || 0)));
+    camInfo.textContent = `${trig} → ${c.motion || '-'} / ${c.expression || '-'}`;
+  };
+  fetch('../../engine/reactions.default.json').then(r => r.json()).then(table => {
+    if (table.version !== 2) return;
+    const sel = document.getElementById('reactTrig');
+    for (const k of Object.keys(table.reactions)) sel.append(new Option(k, k));
+    document.getElementById('reactBox').hidden = false;
+    document.getElementById('reactGo').onclick = () => runReaction(table, sel.value, Number(document.getElementById('reactInt').value));
+  }).catch(() => {});
+  window.setExpression = name => { const i = (m.json.expressions || []).findIndex(e => e.name === name); if (i >= 0) setExpr(m.json.expressions[i], exprBox.children[i]); };
   const follow = document.getElementById('follow'), swing = document.getElementById('swing');
   const toggle = b => b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') !== 'true');
   follow.onclick = () => toggle(follow);
@@ -75,6 +268,78 @@
   if (q.get('blink') === '0') blinkBtn.setAttribute('aria-pressed', 'false');
   let nextBlink = performance.now() + 2000, blinkStart = -1;
   swing.onclick = () => toggle(swing);
+  const wave = document.getElementById('wave');
+  let waveEase = false;
+  wave.onclick = () => { toggle(wave); waveEase = true; };
+  wave.hidden = !('armRX' in m.params);
+  // camera: face (FaceMesh -> face-features.js) and hands (Hands -> tracking.js wrists -> arms). The camera
+  // image is not mirrored: the user's right side drives the avatar's screen-left side (like a mirror).
+  const camBtn = document.getElementById('cam'), camInfo = document.getElementById('camInfo');
+  let cam = null;
+  const loadScript = src => new Promise((ok, bad) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => bad(new Error(src)); document.head.append(s); });
+  camBtn.onclick = async () => {
+    if (cam) { cam.stop(); cam = null; camBtn.setAttribute('aria-pressed', 'false'); camInfo.textContent = ''; return; }
+    try {
+      camInfo.textContent = '카메라 켜는 중…';
+      if (!window.FaceMesh) await loadScript('../../lib/vendor/face_mesh/face_mesh.js');
+      if (!window.Hands) await loadScript('../../lib/vendor/hands/hands.js');
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+      const video = Object.assign(document.createElement('video'), { srcObject: stream, muted: true, playsInline: true });
+      await video.play();
+      const fm = new FaceMesh({ locateFile: f => '../../lib/vendor/face_mesh/' + f });
+      fm.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+      const hands = new Hands({ locateFile: f => '../../lib/vendor/hands/' + f });
+      hands.setOptions({ maxNumHands: 2, modelComplexity: 0, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+      const st = { lm: null, hands: null, face: new FaceFeatures.Tracker({ smoothing: 0.5 }), arms: CapsuleTracking.createArmTracker(), running: true, n: 0 };
+      fm.onResults(r => { st.lm = (r.multiFaceLandmarks || [])[0] || null; });
+      hands.onResults(r => { st.hands = r; });
+      st.face.startCalibration();
+      setTimeout(() => { st.face.finishCalibration(); camInfo.textContent = '따라 하는 중 (정면 기준 맞춤 완료)'; }, 1200);
+      camInfo.textContent = '정면을 1초 보세요 (기준 맞추는 중)';
+      const loop = async () => {
+        while (st.running) {
+          if (video.readyState >= 2) {
+            try { await fm.send({ image: video }); if (st.n++ % 2 === 0) await hands.send({ image: video }); } catch (e) { camInfo.textContent = String(e); }
+          }
+          await new Promise(r => requestAnimationFrame(r));
+        }
+      };
+      loop();
+      cam = st;
+      st.aspect = video.videoWidth / video.videoHeight || 4 / 3;
+      st.stop = () => { st.running = false; stream.getTracks().forEach(t => t.stop()); fm.close(); hands.close(); };
+      camBtn.setAttribute('aria-pressed', 'true');
+      follow.setAttribute('aria-pressed', 'false'); swing.setAttribute('aria-pressed', 'false');
+    } catch (e) { camInfo.textContent = '카메라를 쓸 수 없습니다: ' + e.message; }
+  };
+  const camFrame = now => {
+    if (!cam || !cam.lm) return false;
+    const t = now / 1000, p = cam.face.update(cam.lm, t, cam.aspect);
+    if (!p) return false;
+    const put = (id, v) => { if (id in m.params) { m.set(id, v); if (inputs[id]) inputs[id].value = v; } };
+    put('angleX', p.ax); put('angleY', p.ay);
+    put('eyeOpenL', p.eR); put('eyeOpenR', p.eL);          // mirror: the user's right eye -> the avatar's right
+    put('eyeX', p.ex); put('eyeY', p.ey);
+    put('mouthOpen', p.mo); put('mouthForm', p.mf);
+    put('browLY', p.br); put('browRY', p.br);
+    // the head tilts (angleZ); the body follows the head a little, later
+    if ('angleZ' in m.params) put('angleZ', p.az);
+    put('bodyX', (m.params.bodyX ?? 0) + (0.35 * p.ax - (m.params.bodyX ?? 0)) * 0.05);
+    put('bodyZ', (m.params.bodyZ ?? 0) + (-0.3 * p.az - (m.params.bodyZ ?? 0)) * 0.05);
+    if ('armLX' in m.params) {
+      const face = CapsuleTracking.faceBoxFromMesh(cam.lm, cam.aspect);
+      const handsIn = cam.hands ? CapsuleTracking.wristsFromHands(cam.hands, cam.aspect) : [];
+      const rel = cam.arms.update({ face, hands: handsIn }, t);
+      const a = CapsuleTracking.armParams(m, rel);
+      for (const s of ['L', 'R']) {
+        put('arm' + s + 'X', a['arm' + s + 'X'] ?? 0); put('arm' + s + 'Y', a['arm' + s + 'Y'] ?? 0);
+      }
+    }
+    return true;
+  };
+  const breathe = document.getElementById('breathe');
+  breathe.onclick = () => toggle(breathe);
+  if (q.get('breath') === '0') breathe.setAttribute('aria-pressed', 'false');
   let target = { angleX: 0, angleY: 0, eyeX: 0, eyeY: 0 };
   canvas.addEventListener('pointermove', e => {
     const r = canvas.getBoundingClientRect();
@@ -84,13 +349,21 @@
   document.getElementById('zoom').oninput = e => { zoom = Number(e.target.value); };
   addEventListener('resize', resize);
   const t0 = performance.now();
+  // for checks and links: ?expr=<name> and ?set=id:value,id:value
+  if (q.get('expr')) window.setExpression(q.get('expr'));
+  if (q.get('motion')) window.playMotion(q.get('motion'));
+  for (const kv of (q.get('set') || '').split(',').filter(Boolean)) {
+    const [id, v] = kv.split(':');
+    if (id in m.params || CapsuleV2.LIVE2D[id]) { m.set(id, Number(v)); if (inputs[id]) inputs[id].value = v; }
+  }
   const frame = now => {
     if (swing.getAttribute('aria-pressed') === 'true') {
       const t = (now - t0) / 1000;
       target.angleX = Math.sin(t * 0.9);
       target.angleY = 0.35 * Math.sin(t * 0.55);
     }
-    if (follow.getAttribute('aria-pressed') === 'true' || swing.getAttribute('aria-pressed') === 'true') {
+    const tracked = camFrame(now);
+    if (!tracked && (follow.getAttribute('aria-pressed') === 'true' || swing.getAttribute('aria-pressed') === 'true')) {
       target.eyeX = target.angleX; target.eyeY = target.angleY;
       for (const [id, k] of [['angleX', 0.12], ['angleY', 0.12], ['eyeX', 0.35], ['eyeY', 0.35]]) {
         if (!(id in m.params)) continue;
@@ -98,20 +371,61 @@
         m.set(id, v);
         inputs[id].value = v;
       }
+      // the body follows the head a little, later (it is heavier): turn with it, lean against it
+      for (const [id, goal] of [['bodyX', 0.35 * m.params.angleX], ['bodyZ', -0.2 * m.params.angleX], ['bodyY', 0.25 * m.params.angleY]]) {
+        if (!(id in m.params)) continue;
+        const v = m.params[id] + (goal - m.params[id]) * 0.04;
+        m.set(id, v);
+        inputs[id].value = v;
+      }
     }
-    if (blinkBtn.getAttribute('aria-pressed') === 'true' && 'eyeOpenL' in m.params) {
+    if ('armRX' in m.params && waveEase) {
+      // wave: the screen-right arm up beside the head, the hand swinging from the wrist; the other arm and the
+      // body answer a little. Off: everything eases back.
+      const on = wave.getAttribute('aria-pressed') === 'true', t = (now - t0) / 1000;
+      const goal = on ? { armRX: 0.15, armRY: 1.05, handR: 0.55 * Math.sin(t * 7), bodyZ: -0.15, armLX: 0.03 }
+                      : { armRX: 0, armRY: 0, handR: 0, armLX: 0 };
+      for (const [id, g] of Object.entries(goal)) {
+        if (!(id in m.params) || (!on && id === 'bodyZ')) continue;
+        const v = m.params[id] + (g - m.params[id]) * (id === 'handR' && on ? 0.35 : 0.08);
+        m.set(id, Math.abs(v) < 1e-4 ? 0 : v); if (inputs[id]) inputs[id].value = v;
+      }
+      if (!on && ['armRX', 'armRY', 'handR', 'armLX'].every(id => !m.params[id])) waveEase = false;
+    }
+    if (breathe.getAttribute('aria-pressed') === 'true' && 'breath' in m.params) {
+      const b = 0.5 - 0.5 * Math.cos((now - t0) / 1000 * 2 * Math.PI / 3.6);   // one breath every 3.6 s
+      m.set('breath', b); inputs.breath.value = b;
+    }
+    // the expression's eye openness is the base the blink closes from
+    const exprT = exprStart < 0 ? 1 : Math.min(1, (now - exprStart) / 300), ez = exprT * exprT * (3 - 2 * exprT);
+    const eyeBase = {};
+    for (const id of exprIds) {
+      if (!(id in m.params)) continue;
+      const goal = expr[id] ?? defaults[id];
+      const from = exprFrom[id] ?? goal;
+      const v = from + (goal - from) * ez;
+      if (id.startsWith('eyeOpen')) { eyeBase[id] = v; continue; }
+      const following = follow.getAttribute('aria-pressed') === 'true' || swing.getAttribute('aria-pressed') === 'true';
+      if (following && (id === 'eyeX' || id === 'eyeY')) continue;
+      if (exprT < 1 || id in expr) { m.set(id, v); if (inputs[id]) inputs[id].value = v; }
+    }
+    for (const id of ['eyeOpenL', 'eyeOpenR']) if (id in m.params && (exprT < 1 || id in expr)) { m.set(id, eyeBase[id] ?? 1); }
+    if (!tracked && blinkBtn.getAttribute('aria-pressed') === 'true' && 'eyeOpenL' in m.params) {
       if (blinkStart < 0 && now > nextBlink) blinkStart = now;
       if (blinkStart >= 0) {
         // ~0.32 s: close (35 %), stay shut a moment (12 %), open a little slower (53 %), eased
         const u = (now - blinkStart) / 320;
         const ease = t => t * t * (3 - 2 * t);
         const open = u < 0.35 ? 1 - ease(u / 0.35) : u < 0.47 ? 0 : u < 1 ? ease((u - 0.47) / 0.53) : 1;
-        for (const id of ['eyeOpenL', 'eyeOpenR']) { m.set(id, open); inputs[id].value = open; }
+        for (const id of ['eyeOpenL', 'eyeOpenR']) { const v = (eyeBase[id] ?? 1) * open; m.set(id, v); inputs[id].value = v; }
         if (u >= 1) { blinkStart = -1; nextBlink = now + 2500 + Math.random() * 3000; }
       }
     }
     for (const id in inputs) document.getElementById('v_' + id).textContent = Number(m.params[id]).toFixed(2);
     document.getElementById('zv').textContent = zoom.toFixed(2);
+    idleFrame(now);
+    motionFrame(now);
+    m.step(Math.min(0.05, (now - (window._last || now)) / 1000)); window._last = now;
     m.setView(zoom, cx, cy);
     m.draw();
     requestAnimationFrame(frame);

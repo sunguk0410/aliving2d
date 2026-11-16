@@ -42,7 +42,7 @@ STAMP = os.path.join(VENV, '.capsule-setup.json')
 TORCH = ['torch==2.8.0', 'torchvision==0.23.0']           # same pins as see-through's README
 TORCH_INDEX = 'https://download.pytorch.org/whl/cu128'
 EXTRA = ['onnxruntime']                                   # prepare.py: anime character segmentation
-# Not needed for inference (GUI, training, dev tools) - same list as the Colab notebook
+# Not needed for inference (GUI, training, dev tools)
 SKIP = ['PyQt6', 'PyQt6-Qt6', 'qtpy', 'lpips', 'convnext_perceptual_loss', 'ipykernel', 'pytest', 'Cython', 'wheel']
 EDITOR_PORT, SERVER_PORT = 8000, 7860
 EDITOR_ORIGINS = [f'http://127.0.0.1:{EDITOR_PORT}', f'http://localhost:{EDITOR_PORT}']

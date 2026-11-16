@@ -196,8 +196,5 @@ class ResolutionTests(unittest.TestCase):
         job.resolution = 1024
         cmd = conv.command(job, 'out')
         self.assertEqual(cmd[cmd.index('--resolution') + 1], '1024')
-        job.body_only = True
-        self.assertTrue(conv.command(job, 'out')[1].endswith('body_only.py'), 'study poses run the body pass only')
-        job.body_only = False
         conv.mode = 'blockswap'
         self.assertTrue(conv.command(job, 'out')[1].endswith('inference_psd_blockswap.py'))

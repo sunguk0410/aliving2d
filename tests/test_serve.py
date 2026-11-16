@@ -1,5 +1,6 @@
 """serve.py: local static server (editor + player demos)."""
 import http.client
+import json
 import socket
 import sys
 import threading
@@ -34,15 +35,76 @@ class ServeTests(unittest.TestCase):
     def test_static_files(self):
         code, _, head = self.request('GET', '/')
         self.assertEqual(code, 302)
-        self.assertEqual(head['Location'], '/v2/viewer/')
+        self.assertEqual(head['Location'], '/v2/studio/')
         self.assertEqual(self.request('GET', '/v2/viewer/index.html')[0], 200)
+        self.assertEqual(self.request('GET', '/v2/studio/index.html')[0], 200)
+        code, data, _ = self.request('GET', '/api/v2/jobs')
+        self.assertEqual(code, 200)
+        self.assertIn('jobs', json.loads(data))
         self.assertEqual(self.request('GET', '/v2/engine/engine.js')[0], 200)
         code, _, head = self.request('GET', '/lib/vendor/face_mesh/face_mesh_solution_simd_wasm_bin.wasm')
         self.assertEqual(code, 200)
         self.assertEqual(head['Content-Type'], 'application/wasm')
-        code, _, head = self.request('GET', '/seethrough/see_through_colab.ipynb')
-        self.assertEqual(code, 200)
         self.assertEqual(head['X-Content-Type-Options'], 'nosniff')
+
+    def test_job_options(self):
+        import tempfile
+        from unittest import mock
+        import serve
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(serve, 'WORK', Path(tmp)):
+            d = Path(tmp) / '1116-000000-abcd'
+            d.mkdir()
+            (d / 'status.json').write_text(json.dumps({'id': d.name, 'state': 'done', 'steps': {}}), encoding='utf-8')
+            origin = {'Origin': f'http://127.0.0.1:{self.server.server_port}', 'Content-Type': 'application/json'}
+            code, data, _ = self.request('POST', f'/api/v2/jobs/{d.name}/options', b'{"ears": false, "x": 1}', origin)
+            self.assertEqual(code, 200)
+            self.assertEqual(json.loads(data)['options'], {'ears': False})
+            jobs = json.loads(self.request('GET', '/api/v2/jobs')[1])['jobs']
+            self.assertEqual(jobs[0]['options'], {'ears': False})
+            code, data, _ = self.request('POST', f'/api/v2/jobs/{d.name}/options', b'{"ears": null}', origin)
+            self.assertEqual(json.loads(data)['options'], {})
+            code, _, _ = self.request('POST', '/api/v2/jobs/nope-job/options', b'{}', origin)
+            self.assertEqual(code, 404)
+
+    def test_job_extras_option(self):
+        import tempfile
+        from unittest import mock
+        import serve
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(serve, 'WORK', Path(tmp)):
+            d = Path(tmp) / '1116-000000-abcd'
+            d.mkdir()
+            (d / 'status.json').write_text(json.dumps({'id': d.name, 'state': 'done', 'steps': {}}), encoding='utf-8')
+            origin = {'Origin': f'http://127.0.0.1:{self.server.server_port}', 'Content-Type': 'application/json'}
+            code, data, _ = self.request('POST', f'/api/v2/jobs/{d.name}/options', b'{"extras": ["arms", "nope", "fx"]}', origin)
+            self.assertEqual(json.loads(data)['options'], {'extras': ['arms', 'fx']})
+            code, data, _ = self.request('POST', f'/api/v2/jobs/{d.name}/options', '{"name": "  은발  정장 "}'.encode(), origin)
+            self.assertEqual(json.loads(data)['options']['name'], '은발 정장')
+            jobs = json.loads(self.request('GET', '/api/v2/jobs')[1])['jobs']
+            self.assertEqual(jobs[0]['name'], '은발 정장')
+
+    def test_save_expression(self):
+        import tempfile
+        from unittest import mock
+        import serve
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(serve, 'ROOT', tmp):
+            b = Path(tmp) / 'v2' / 'bundles' / 'm1'
+            b.mkdir(parents=True)
+            (b / 'model.json').write_text(json.dumps({'params': [{'id': 'eyeSmile'}], 'expressions': []}), encoding='utf-8')
+            origin = {'Origin': f'http://127.0.0.1:{self.server.server_port}', 'Content-Type': 'application/json'}
+            body = json.dumps({'name': 'smile', 'label': '웃음', 'params': {'eyeSmile': 0.8, 'other': 1},
+                               'model': '../bundles/m1/model.json'}).encode()
+            code, data, _ = self.request('POST', '/api/v2/expressions', body, origin)
+            self.assertEqual(code, 200)
+            self.assertEqual(json.loads(data)['expressions']['smile']['params'], {'eyeSmile': 0.8, 'other': 1.0})
+            m = json.loads((b / 'model.json').read_text(encoding='utf-8'))
+            self.assertEqual(m['expressions'][0]['params'], {'eyeSmile': 0.8})
+            self.assertTrue((b / 'expressions' / 'smile.exp3.json').is_file())
+            code, _, _ = self.request('POST', '/api/v2/expressions', b'{"name": "../x", "params": {"a": 1}}', origin)
+            self.assertEqual(code, 400)
+            code, _, _ = self.request('POST', '/api/v2/expressions', json.dumps(
+                {'name': 'smile', 'delete': True, 'model': '../bundles/m1/model.json'}).encode(), origin)
+            m = json.loads((b / 'model.json').read_text(encoding='utf-8'))
+            self.assertEqual(m['expressions'], [])
 
     def test_hidden_files_are_not_served(self):
         for path in ('/.git/config', '/serve.py', '/.gitignore', '/seethrough/server.py',

@@ -142,14 +142,13 @@ class Converter:
     # ---- jobs ----
     RESOLUTIONS = (1024, 1152, 1280)
 
-    def submit(self, data, name, resolution=None, prepare=True, body_only=False):
+    def submit(self, data, name, resolution=None, prepare=True):
         ext = image_ext(data)
         if not ext:
             raise ValueError('PNG / JPEG / WEBP 이미지만 받습니다')
         job = Job(name, self.args.workdir)
         job.resolution = resolution if resolution in self.RESOLUTIONS else None
         job.prepare = prepare
-        job.body_only = body_only
         os.makedirs(job.dir, exist_ok=True)
         with open(os.path.join(job.dir, job.name + ext), 'wb') as f:
             f.write(data)
@@ -220,8 +219,6 @@ class Converter:
         a, repo = self.args, self.args.repo
         if self.mode == 'nf4':
             script = os.path.join(repo, 'inference/scripts/inference_psd_quantized.py')
-            if getattr(job, 'body_only', False):   # study poses: arms + props only, half the time (body_only.py)
-                script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'body_only.py')
             cmd = [a.python, script] + self.NF4_ATTEMPTS[attempt]
         elif self.mode == 'blockswap':
             # bf16 weights, transformer blocks swapped between CPU and GPU: ~8 GB at 1280
@@ -398,7 +395,7 @@ def make_handler(conv, token, origins=None):
             elif origin in origins:
                 self.send_header('Access-Control-Allow-Origin', origin)
                 self.send_header('Vary', 'Origin')
-            self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Token, X-Filename, X-Resolution, X-Prepare, X-Parts')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Token, X-Filename, X-Resolution, X-Prepare')
             self.send_header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
             self.send_header('Access-Control-Allow-Private-Network', 'true')
             self.send_header('Access-Control-Expose-Headers', 'Content-Disposition')
@@ -475,7 +472,7 @@ def make_handler(conv, token, origins=None):
                 except ValueError:
                     res = 0
                 job = conv.submit(data, unquote(self.headers.get('X-Filename', 'image')), res or None,
-                                  prepare=self.headers.get('X-Prepare', '1') != '0', body_only=self.headers.get('X-Parts') == 'body')
+                                  prepare=self.headers.get('X-Prepare', '1') != '0')
             except ValueError as err:
                 return self._json(400, {'error': str(err)})
             print(f'[job {job.id}] queued {job.name} ({n // 1024} KB, mode {conv.mode})', flush=True)

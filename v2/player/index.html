@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>캡슐 플레이어 시험</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f6f5f2; --fg: #222; --line: #ccc; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1b1b1d; --fg: #eee; --line: #444; } }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px system-ui, sans-serif; }
+  body { display: grid; grid-template-rows: 1fr auto; }
+  canvas { width: 100%; height: 100%; display: block; }
+  nav { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; border-top: 1px solid var(--line); }
+  button { font: inherit; padding: 4px 10px; }
+  #log { margin-left: auto; opacity: .7; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<nav id="nav"><span id="log"></span></nav>
+<script src="../engine/engine.js?v=3"></script>
+<script src="../engine/player.js?v=3"></script>
+<script>
+// 캡슐 프런트가 쓸 모양 그대로: 모델 + 반응표만 주면 혼자 숨 쉬고 깜빡이고 두리번거림. 버튼 = 백엔드 trigger_type.
+(async () => {
+  const q = new URLSearchParams(location.search);
+  const canvas = document.getElementById('c');
+  const fit = () => { const r = canvas.getBoundingClientRect(), d = devicePixelRatio || 1; canvas.width = r.width * d; canvas.height = r.height * d; };
+  fit(); addEventListener('resize', fit);
+  const log = document.getElementById('log');
+  try {
+    const p = await CapsuleV2Player.create(canvas, q.get('model') || '../bundles/chaerin/model.json',
+      { reactions: '../../engine/reactions.default.json', zoom: Number(q.get('zoom') || 1) });
+    window.player = p;
+    p.onReaction = (trig, c) => { log.textContent = `${trig} → ${c.motion || '-'} / ${c.expression || '-'}`; };
+    const nav = document.getElementById('nav');
+    for (const trig of Object.keys(p.table.reactions)) for (const i of [undefined, 1, 2, 3]) {
+      const cs = p.table.reactions[trig];
+      if (i === undefined ? !cs.some(c => c.intensity == null) : !cs.some(c => c.intensity === i)) continue;
+      const b = document.createElement('button');
+      b.textContent = trig + (i ? ' ' + i : '');
+      b.onclick = () => p.react(trig, i);
+      nav.insertBefore(b, log);
+    }
+    canvas.addEventListener('pointermove', e => {
+      const r = canvas.getBoundingClientRect();
+      p.lookAt(((e.clientX - r.left) / r.width - 0.5) * 2.4, -((e.clientY - r.top) / r.height - 0.5) * 2.4);
+    });
+    if (q.get('react')) { const [t, i] = q.get('react').split(':'); p.react(t, i ? Number(i) : undefined); }
+  } catch (e) { log.textContent = String(e); }
+})();
+</script>
+</body>
+</html>

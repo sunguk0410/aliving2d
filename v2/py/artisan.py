@@ -129,7 +129,25 @@ def part_rule(name, L):
         'front hair': (1.12, 1.10, 0.02, 1),
         'headwear':   (1.15, 1.15, 0.04, 1),
         'back hair':  (1.25, 1.10, 0.00, -1),
+        'fx blush':   (1.00, 1.00, 0.03, 1),
+        'fx gloom':   (1.00, 1.00, 0.02, 1),
+        'fx tears':   (1.00, 1.00, -0.02, 1),
+        'fx heart':   (1.00, 1.00, -0.05, 1),
+        'fx sparkle': (1.00, 1.00, -0.04, 1),
+        'fx sweat':   (1.15, 1.10, 0.05, 1),
+        'fx anger':   (1.15, 1.10, 0.05, 1),
     }.get(base)
+
+
+def back_hair_depth(x, y, L, R, D, rf, df):
+    """Back hair (925: "the crown follows the front hair's curve; the hair hanging behind moves the other way;
+    hide the change-over behind the head"): over the crown it lies on the top of the head and turns with it,
+    from the eyes down it hangs behind the axis. In between it blends, hidden behind the head."""
+    top, eye = L['top_y'], L['eye_y']
+    w = np.clip((y - (top + 0.35 * (eye - top))) / max(1.0, 0.75 * (eye - top)), 0, 1)   # 0 crown -> 1 behind
+    crown = 0.85 * shell(x, R * rf, D * df)
+    behind = -shell(x, R * rf, D * df)
+    return crown * (1 - w) + behind * w
 
 
 def turn_disp(part, L, deg, R, D):
@@ -149,6 +167,8 @@ def turn_disp(part, L, deg, R, D):
         return np.zeros_like(pts)
     rf, df, extra, sign = rule
     z = sign * shell(x, R * rf, D * df) + extra * R
+    if name == 'back hair':
+        z = back_hair_depth(x, y, L, R, D, rf, df)
     # hair hanging below the jaw: still on the head (it hangs from it), but less and less turned with distance
     if name in ('front hair', 'back hair'):
         hang = np.clip((y - L['chin_y']) / (1.2 * R), 0, 1)
@@ -176,6 +196,8 @@ def nod_disp(part, L, deg, R, D):
     rf, df, extra, sign = rule
     vy = np.sqrt(np.clip(1 - (yr / (Ry * rf)) ** 2, 0, 1))
     z = sign * shell(x, R * rf, D * df) * vy + extra * R
+    if part.name == 'back hair':
+        z = back_hair_depth(x, pts[..., 1], L, R, D, rf, df) * vy
     if part.name in ('front hair', 'back hair'):
         hang = np.clip((pts[..., 1] - L['chin_y']) / (1.2 * R), 0, 1)
         z = z * (1 - 0.6 * hang)
@@ -183,8 +205,15 @@ def nod_disp(part, L, deg, R, D):
     return np.stack([np.zeros_like(dy), dy], -1).astype(np.float32)
 
 
-ORDER = ['back hair', 'topwear', 'handwear', 'neck', 'neckwear', 'ears', 'earwear', 'face', 'nose', 'mouth',
-         'eyewhite', 'irides', 'eyelash', 'eyewear', 'eyebrow', 'front hair', 'headwear', 'objects']
+# the neck is behind the clothes (a collar covers its foot; drawn over them, its hidden edge shows through)
+ORDER = ['back hair', 'neck', 'legwear', 'bottomwear', 'topwear', 'handwear', 'neckwear', 'ears', 'earwear', 'face', 'nose', 'mouth', 'fx blush',
+         'eyewhite', 'irides', 'eyelash', 'eyewear', 'eyebrow', 'fx tears', 'front hair', 'headwear',
+         'fx gloom', 'fx sweat', 'fx anger', 'objects']
+
+
+def order_rank(p):
+    b = p.name.rsplit('_', 1)[0] if p.name.endswith(('_l', '_r')) else p.name
+    return ORDER.index(b) if b in ORDER else len(ORDER)
 
 
 def artisan_order(rig):
@@ -195,10 +224,58 @@ def artisan_order(rig):
     rig.parts.sort(key=rank)          # stable: left / right pairs keep their order
 
 
-def build(rig, deg=20.0, deg_y=14.0, gaze=True, mouth_src=None, mouth_open=None, smile_eyes=None):
+def trim_hidden_skin(rig, R):
+    """The face layer goes on under the hair up to the crown (see-through paints what is hidden). Where it runs
+    close to the head's outline under the hair, a turn slides it out past the hair: the artisan draws the skin
+    only as far as it can ever show. Hidden face pixels within 0.12 R of the outline of face + front hair go."""
+    P = {p.name: p for p in rig.parts}
+    face = P.get('face')
+    hair = [p for p in rig.parts if p.name == 'front hair']
+    if face is None or not hair:
+        return 0
+    ha = np.max([p.rgba[..., 3] for p in hair], 0)
+    fa = face.rgba[..., 3]
+    union = (fa > 0.5) | (ha > 0.5)
+    dist = ndi.distance_transform_edt(union)
+    m = 0.12 * R
+    cut = (ha > 0.5) & (dist < m)
+    w = np.clip(dist / m, 0, 1) ** 2                       # fade, not a hard cut, toward the outline
+    keep = np.where(cut, w, 1.0)
+    face.rgba = face.rgba.copy()
+    face.rgba[..., 3] = fa * keep
+    return int(cut.sum())
+
+
+# what a model gets beyond the plain one (head turn X / Y, gaze, blink, smile eyes, mouth, brows): the user found the
+# plain first model the most natural (2026-11-16), so these are opt-in, per job (options.json 'extras')
+EXTRAS = ('physics', 'arms', 'body', 'fx', 'presets')
+
+
+def build(rig, deg=20.0, deg_y=14.0, gaze=True, mouth_src=None, mouth_open=None, smile_eyes=None, hair=None,
+          ears=True, extras=()):
     """mouth_src: the picture the PSD was made from; mouth_open / smile_eyes: the same picture with the mouth
-    open / the eyes smiling (^ ^), drawn by AI - used as drawn states (Live2D 描き目)."""
+    open / the eyes smiling (^ ^), drawn by AI - used as drawn states (Live2D 描き目).
+    extras: see EXTRAS ('physics' = hair sway, 'fx' = effect parts)."""
+    if hair is None:
+        hair = 'physics' in extras
+    hidden = None
+    if not ears:                                    # ears hidden under the hair (a per-character choice)
+        gone = [p for p in rig.parts if p.name in ('ears', 'earwear')]
+        if gone:
+            hidden = np.max([p.rgba[..., 3] for p in gone], 0) > 0.05
+        rig.parts = [p for p in rig.parts if p.name not in ('ears', 'earwear')]
+    if mouth_src:                                   # eye whites the split left out, drawn in (eyewhite_fill.py)
+        from eyewhite_fill import add_eyewhite
+        from source_paint import picture_on_canvas
+        add_eyewhite(rig, picture_on_canvas(mouth_src, rig.size))
+    if mouth_src:                                   # visible pixels from the original picture (source_paint.py)
+        from source_paint import paint_from_source, uncover
+        uncover(rig, mouth_src)                     # the neck shows where the picture shows it
+        paint_from_source(rig, mouth_src, order_rank, keep=hidden)
+        from source_paint import clear_fringe
+        clear_fringe(rig, mouth_src)
     L = landmarks(rig)
+    trim_hidden_skin(rig, L['half'] * 1.04)
     split_pairs(rig, L['cx'])
     artisan_order(rig)
     if gaze:
@@ -214,6 +291,12 @@ def build(rig, deg=20.0, deg_y=14.0, gaze=True, mouth_src=None, mouth_open=None,
         add_drawn_eyes(rig, mouth_src, smile_eyes)
     R = L['half'] * 1.04
     D = R * 0.95
+    if gaze:                                        # expression parameters and parts (face_expr.py)
+        from face_expr import add_expression_rig
+        add_expression_rig(rig, L, R, fx='fx' in extras)
+    if hair:
+        from hair_rig import add_hair_sway
+        add_hair_sway(rig, L, R)
     for p in rig.parts:
         z0 = np.zeros_like(p.warp.rest)
         p.keys['angleX'] = {-1.0: turn_disp(p, L, -deg, R, D), 0.0: z0, 1.0: turn_disp(p, L, deg, R, D)}
