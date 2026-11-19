@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'v2' / 'py'))
+sys.path.insert(0, str(ROOT / 'py'))
 HAVE = all(importlib.util.find_spec(m) for m in ('numpy', 'scipy', 'PIL'))
 
 
@@ -40,7 +40,7 @@ class PresetTests(unittest.TestCase):
 
     def test_live2d_aliases_point_at_params(self):
         import re
-        js = (ROOT / 'v2' / 'engine' / 'engine.js').read_text(encoding='utf-8')
+        js = (ROOT / 'engine' / 'engine.js').read_text(encoding='utf-8')
         table = js[js.index('const LIVE2D = {'):js.index('};', js.index('const LIVE2D = {'))]
         targets = re.findall(r"Param\w+: \['(\w+)'", table)
         self.assertGreater(len(targets), 10)

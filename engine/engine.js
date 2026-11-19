@@ -1,5 +1,5 @@
 /*
- * Capsule v2 engine: keyform model player (WebGL2). Reads bundle v2 (v2/py/export_bundle.py).
+ * Capsule v2 engine: keyform model player (WebGL2). Reads bundle v2 (py/export_bundle.py).
  *
  *   const m = await CapsuleV2.load(canvas, 'bundles/x/model.json');
  *   m.set('angleX', 0.5); m.draw();

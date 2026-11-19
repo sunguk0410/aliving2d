@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>v2 모델 보기</title>
+<title>Aliving2D 모델 보기</title>
 <style>
   :root { color-scheme: light; --bg: #f4f2ef; --panel: #fff; --ink: #222; --quiet: #777; --line: #ddd; }
   * { box-sizing: border-box; }
@@ -28,7 +28,7 @@
 <body>
 <div id="stage"><canvas id="c"></canvas></div>
 <aside>
-  <h1>v2 모델 보기</h1>
+  <h1>Aliving2D 모델 보기</h1>
   <div class="quiet" id="name"></div>
   <div id="exprs" class="exprs"></div>
   <div class="exprs" id="saveBox">
@@ -59,8 +59,8 @@
   <div id="err"></div>
 </aside>
 <script src="../engine/engine.js?v=3"></script>
-<script src="../../lib/face-features.js"></script>
-<script src="../../engine/tracking.js"></script>
+<script src="../lib/face-features.js"></script>
+<script src="../engine/tracking.js"></script>
 <script>
 (async () => {
   const q = new URLSearchParams(location.search);
@@ -250,7 +250,7 @@
     reactTimer = setTimeout(() => window.setExpression(c.then || 'neutral'), Math.max(c.hold || 0, after + (c.talk || 0)));
     camInfo.textContent = `${trig} → ${c.motion || '-'} / ${c.expression || '-'}`;
   };
-  fetch('../../engine/reactions.default.json').then(r => r.json()).then(table => {
+  fetch('../engine/reactions.default.json').then(r => r.json()).then(table => {
     if (table.version !== 2) return;
     const sel = document.getElementById('reactTrig');
     for (const k of Object.keys(table.reactions)) sel.append(new Option(k, k));
@@ -279,14 +279,14 @@
     if (cam) { cam.stop(); cam = null; camBtn.setAttribute('aria-pressed', 'false'); camInfo.textContent = ''; return; }
     try {
       camInfo.textContent = '카메라 켜는 중…';
-      if (!window.FaceMesh) await loadScript('../../lib/vendor/face_mesh/face_mesh.js');
-      if (!window.Hands) await loadScript('../../lib/vendor/hands/hands.js');
+      if (!window.FaceMesh) await loadScript('../lib/vendor/face_mesh/face_mesh.js');
+      if (!window.Hands) await loadScript('../lib/vendor/hands/hands.js');
       const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
       const video = Object.assign(document.createElement('video'), { srcObject: stream, muted: true, playsInline: true });
       await video.play();
-      const fm = new FaceMesh({ locateFile: f => '../../lib/vendor/face_mesh/' + f });
+      const fm = new FaceMesh({ locateFile: f => '../lib/vendor/face_mesh/' + f });
       fm.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
-      const hands = new Hands({ locateFile: f => '../../lib/vendor/hands/' + f });
+      const hands = new Hands({ locateFile: f => '../lib/vendor/hands/' + f });
       hands.setOptions({ maxNumHands: 2, modelComplexity: 0, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
       const st = { lm: null, hands: null, face: new FaceFeatures.Tracker({ smoothing: 0.5 }), arms: CapsuleTracking.createArmTracker(), running: true, n: 0 };
       fm.onResults(r => { st.lm = (r.multiFaceLandmarks || [])[0] || null; });

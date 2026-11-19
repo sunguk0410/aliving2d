@@ -1,5 +1,5 @@
 """
-Bundle v2 writer: model.json + parts/*.png for the browser engine (v2/engine/engine.js).
+Bundle v2 writer: model.json + parts/*.png for the browser engine (engine/engine.js).
 
 model.json
   version 2, canvas [W, H]
@@ -20,7 +20,7 @@ model.json
   motions      [{name, label, group, file, duration, loop, curves: {param: [[t, v], ...]}}]  (motions.py), also
                motions/<name>.motion3.json
 
-  python v2/py/export_bundle.py <psd> <out dir>        (artisan rule rig, for testing)
+  python py/export_bundle.py <psd> <out dir>        (artisan rule rig, for testing)
 """
 import json
 import os
@@ -48,7 +48,7 @@ def part_spec(name, rgba, warp, keys, opacity=None, group=None, clip=None, mask_
 def write(specs, canvas, out, params=PARAMS, physics=None, arms=None, extras=('presets',)):
     """physics: hair pendulums (hair_rig.py); their output parameters are added as hidden parameters.
     Parameters no part, physics entry or arm uses are left out (no slider that does nothing).
-    Expressions: the user's own (v2/expressions.user.json, saved from the viewer) and, with 'presets' in extras,
+    Expressions: the user's own (expressions.user.json, saved from the viewer) and, with 'presets' in extras,
     face_expr.EXPRESSIONS under them."""
     physics = physics or []
     used = {pid for s in specs for pid in list(s['keys']) + list(s.get('opacity') or {})}
@@ -123,7 +123,7 @@ USER_EXPR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'expr
 
 
 def user_expressions():
-    """{name: (label, {param: value})} saved from the viewer (serve.py POST /api/v2/expressions)."""
+    """{name: (label, {param: value})} saved from the viewer (serve.py POST /api/expressions)."""
     try:
         with open(USER_EXPR, encoding='utf-8') as f:
             data = json.load(f)

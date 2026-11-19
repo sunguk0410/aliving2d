@@ -1,6 +1,6 @@
-"""Local static server for Capsule Model Studio (npm start).
+"""Local static server for Aliving2D (npm start).
 
-Serves the v2 dashboard (/ -> /v2/studio/) and model viewer from this folder to this PC only:
+Serves the v2 dashboard (/ -> /studio/) and model viewer from this folder to this PC only:
 requests must come from localhost with a matching Host/Origin, dot-files and
 Python/batch sources are never served, and only GET/HEAD are allowed (plus one
 same-origin POST that installs see-through, below).
@@ -29,9 +29,9 @@ import redraw  # noqa: E402  (the OpenAI key, standard library only)
 
 SEETHROUGH_PORT = seethrough.DEFAULT_PORT
 
-# v2 dashboard jobs: one folder per picture (v2/py/pipeline.py writes status.json and every step's files there)
-WORK = Path(ROOT) / 'v2' / 'work'
-EXTRAS = ('physics', 'arms', 'body', 'fx', 'presets')     # v2/py/artisan.py EXTRAS
+# v2 dashboard jobs: one folder per picture (py/pipeline.py writes status.json and every step's files there)
+WORK = Path(ROOT) / 'work'
+EXTRAS = ('physics', 'arms', 'body', 'fx', 'presets')     # py/artisan.py EXTRAS
 JOB_ID = __import__('re').compile(r'[0-9]{4}-[0-9]{6}-[0-9a-f]{4}|[a-z0-9_-]{1,40}')
 STEP_KEYS = ('prepare', 'base', 'upscale', 'body', 'headcrop', 'head', 'mouth', 'smile', 'rig',
              'front', 'parts')   # the last two: jobs from before the waist-up base
@@ -84,7 +84,7 @@ def v2_start(job_dir, start=None):
     py = desktop.venv_python()
     if not os.path.isfile(py):
         raise RuntimeError('그림 도구(see-through)가 설치되어 있지 않습니다')
-    cmd = [py, str(Path(ROOT) / 'v2' / 'py' / 'pipeline.py'), str(job_dir)] + (['--from', start] if start else [])
+    cmd = [py, str(Path(ROOT) / 'py' / 'pipeline.py'), str(job_dir)] + (['--from', start] if start else [])
     log = open(job_dir / 'pipeline.log', 'a', encoding='utf-8')
     env = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1')
     if os.name != 'nt':
@@ -143,7 +143,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if urlsplit(self.path).path == '/':
             self.send_response(302)
-            self.send_header('Location', '/v2/studio/')
+            self.send_header('Location', '/studio/')
             self.send_header('Content-Length', '0')
             self.end_headers()
             return
@@ -191,8 +191,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def _save_expression(self):
         """An expression the user set with the sliders: {name, label?, params: {id: value}, model?} or
-        {name, delete: true}. Kept in v2/expressions.user.json (every model built later gets it) and, with model =
-        'v2/bundles/<id>/model.json', written into that bundle at once (model.json + expressions/<name>.exp3.json)."""
+        {name, delete: true}. Kept in expressions.user.json (every model built later gets it) and, with model =
+        'bundles/<id>/model.json', written into that bundle at once (model.json + expressions/<name>.exp3.json)."""
         try:
             got = json.loads(self._body(65536) or b'{}')
         except ValueError:
@@ -207,7 +207,7 @@ class Handler(SimpleHTTPRequestHandler):
                 for k, v in params.items())):
             return self._json({'error': '잘못된 파라미터'}, 400)
         label = str(got.get('label') or name)[:40]
-        f = Path(ROOT) / 'v2' / 'expressions.user.json'
+        f = Path(ROOT) / 'expressions.user.json'
         try:
             table = json.loads(f.read_text(encoding='utf-8'))
         except (OSError, ValueError):
@@ -219,9 +219,9 @@ class Handler(SimpleHTTPRequestHandler):
             ex[name] = {'label': label, 'params': {k: round(float(v), 4) for k, v in params.items()}}
         f.write_text(json.dumps(table, ensure_ascii=False, indent=1), encoding='utf-8')
         bundle = got.get('model')
-        mm = re.fullmatch(r'(?:\.\./|/?v2/)?bundles/([A-Za-z0-9_-]{1,40})/model\.json', bundle or '')
+        mm = re.fullmatch(r'(?:\.\./|/)?bundles/([A-Za-z0-9_-]{1,40})/model\.json', bundle or '')
         if mm:
-            d = Path(ROOT) / 'v2' / 'bundles' / mm.group(1)
+            d = Path(ROOT) / 'bundles' / mm.group(1)
             mf = d / 'model.json'
             if mf.is_file():
                 model = json.loads(mf.read_text(encoding='utf-8'))
@@ -391,7 +391,7 @@ def main():
     global SEETHROUGH_PORT
     SEETHROUGH_PORT = args.seethrough_port
     server.seethrough = None if args.no_seethrough else seethrough.Manager(args.port, port=args.seethrough_port)
-    print('Capsule Model Studio: ' + url + 'v2/studio/')
+    print('Aliving2D: ' + url + 'studio/')
     if args.open_browser:
         webbrowser.open(url + ('?cam=1' if args.camera else ''))
     try:

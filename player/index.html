@@ -30,7 +30,7 @@
   const log = document.getElementById('log');
   try {
     const p = await CapsuleV2Player.create(canvas, q.get('model') || '../bundles/chaerin/model.json',
-      { reactions: '../../engine/reactions.default.json', zoom: Number(q.get('zoom') || 1) });
+      { reactions: '../engine/reactions.default.json', zoom: Number(q.get('zoom') || 1) });
     window.player = p;
     p.onReaction = (trig, c) => { log.textContent = `${trig} → ${c.motion || '-'} / ${c.expression || '-'}`; };
     const nav = document.getElementById('nav');

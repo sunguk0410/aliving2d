@@ -1,4 +1,4 @@
-# Capsule Model Studio (v2)
+# Aliving2D
 
 애니풍 캐릭터 그림 한 장으로 캡슐(CAPSULE)에서 쓸 2.5D 캐릭터 모델을 만드는 개인용 로컬 도구입니다.
 v2는 **Live2D 장인이 모델을 만드는 순서를 그대로 따라가고, 사람이 손으로 하던 단계를 AI와 규칙으로 바꾸는** 방식입니다.
@@ -26,10 +26,10 @@ npm start      # http://127.0.0.1:8000/ → v2 뷰어
 ```bash
 # 1) see-through로 정면 그림을 파츠 PSD로 (GPU PC)
 # 2) 묶음 v2 만들기
-python v2/py/export_bundle.py <psd> v2/bundles/<이름> --src <정면 그림> --mouth-open <입 벌린 그림> --smile-eyes <웃는 눈 그림>
+python py/export_bundle.py <psd> bundles/<이름> --src <정면 그림> --mouth-open <입 벌린 그림> --smile-eyes <웃는 눈 그림>
 ```
 
-뷰어: `http://127.0.0.1:8000/v2/viewer/index.html?model=../bundles/<이름>/model.json`
+뷰어: `http://127.0.0.1:8000/viewer/index.html?model=../bundles/<이름>/model.json`
 
 ## 라이선스
 

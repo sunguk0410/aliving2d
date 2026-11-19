@@ -12,7 +12,7 @@ Artisan-rule head angle keyforms (the way Live2D modelers think about angle X, a
 Every control point of every part gets a depth from these rules, then is turned about the vertical head axis:
 x' = x cos t + z sin t (orthographic). Angle X = +1 turns the face toward the viewer's right.
 
-  python v2/py/artisan.py <psd> <out dir> [--deg 20]
+  python py/artisan.py <psd> <out dir> [--deg 20]
 """
 import argparse
 import json

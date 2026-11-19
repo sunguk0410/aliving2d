@@ -9,7 +9,7 @@ keeps its full-resolution textures; it is placed on the body canvas by the crop'
 (export_bundle xf). The bangs come from the head too, faded out toward the crop's edges, where the body PSD's
 front hair takes over - both come from the same picture, so they line up.
 
-  python v2/py/compose.py <body psd> <base png> <head psd> <head box json> <head png> <out dir> [--mouth-open P] [--smile-eyes P]
+  python py/compose.py <body psd> <base png> <head psd> <head box json> <head png> <out dir> [--mouth-open P] [--smile-eyes P]
 """
 import argparse
 import json

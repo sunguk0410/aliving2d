@@ -13,11 +13,11 @@ base picture, split twice - whole (body) and its head enlarged (face in detail) 
   head      see-through on head.png -> head PSD (the face in detail)
   mouth     GPT: head.png with the mouth open           } while `head` runs (no GPU)
   smile     GPT: head.png with smiling closed eyes ^ ^   }
-  rig       face rig on the head + body parts, composed into bundle v2 in v2/bundles/<job id> (compose.py)
+  rig       face rig on the head + body parts, composed into bundle v2 in bundles/<job id> (compose.py)
 
-Job folder: v2/work/<id>/ with input.*, status.json and every step's files.
+Job folder: work/<id>/ with input.*, status.json and every step's files.
 
-  python v2/py/pipeline.py <job dir> [--from STEP]
+  python py/pipeline.py <job dir> [--from STEP]
 """
 import argparse
 import http.client
@@ -31,7 +31,7 @@ import time
 import traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
+ROOT = os.path.abspath(os.path.join(HERE, '..'))
 sys.path.insert(0, HERE)
 
 STEPS = [
@@ -275,7 +275,7 @@ def step_head(job):
 def step_rig(job):
     from compose import compose
     have = lambda n: job.f(n) if os.path.exists(job.f(n)) else None
-    out = os.path.join(ROOT, 'v2', 'bundles', job.id)
+    out = os.path.join(ROOT, 'bundles', job.id)
     if os.path.isdir(out):
         shutil.rmtree(out)
     box = json.load(open(job.f('head_box.json')))
@@ -286,7 +286,7 @@ def step_rig(job):
     m, info = compose(job.f('body.psd'), job.f('base_2x.png'), job.f('head.psd'), box, job.f('head.png'), out,
                       have('mouth.png'), have('smile.png'), ears=opts.get('ears', True),
                       extras=opts.get('extras') or [])
-    json.dump({'bundle': f'v2/bundles/{job.id}/model.json', 'parts': len(m['parts'])},
+    json.dump({'bundle': f'bundles/{job.id}/model.json', 'parts': len(m['parts'])},
               open(job.f('bundle.json'), 'w'))
     try:                                            # layer previews for the dashboards (layer_preview.py)
         from layer_preview import write_layers

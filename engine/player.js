@@ -1,8 +1,8 @@
 /*
  * CapsuleV2Player — a v2 model, playing by itself, for the CAPSULE front end (no UI).
  *
- *   <script src=".../v2/engine/engine.js"></script>
- *   <script src=".../v2/engine/player.js"></script>
+ *   <script src=".../engine/engine.js"></script>
+ *   <script src=".../engine/player.js"></script>
  *   const p = await CapsuleV2Player.create(canvas, modelJsonUrl, { reactions: tableOrUrl });
  *   p.react('GREETING');                 // live2d_reaction_maps trigger (+ intensity 1..3)
  *   p.setExpression('smile'); p.playMotion('nod'); p.talk(1500);
@@ -13,7 +13,7 @@
  *
  * Layers each frame, later ones win: tracking / lookAt → breathing → expression (eased 0.3 s; blink multiplies the
  * expression's eye openness) → idle motion (added on top) → the playing motion (faded in / out 0.3 s) → physics.
- * Same rules as v2/viewer/index.html.
+ * Same rules as viewer/index.html.
  */
 (function (root) {
   'use strict';
@@ -224,7 +224,7 @@
   }
 
   async function create(canvas, url, opts = {}) {
-    if (!root.CapsuleV2) throw new Error('load v2/engine/engine.js first');
+    if (!root.CapsuleV2) throw new Error('load engine/engine.js first');
     const model = await root.CapsuleV2.load(canvas, url);
     const p = new Player(model, opts);
     const [W, H] = model.json.canvas;

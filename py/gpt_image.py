@@ -1,7 +1,7 @@
 """
 OpenAI image edit with any prompt (same key / model as seethrough/redraw.py).
 
-  python v2/py/gpt_image.py <in.png> <out.png> --prompt-file p.txt [--size 1024x1024] [--n 1]
+  python py/gpt_image.py <in.png> <out.png> --prompt-file p.txt [--size 1024x1024] [--n 1]
 """
 import argparse
 import base64
@@ -12,7 +12,7 @@ import sys
 import urllib.error
 import urllib.request
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'seethrough'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'seethrough'))
 import redraw  # noqa: E402
 
 

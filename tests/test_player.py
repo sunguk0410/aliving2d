@@ -1,4 +1,4 @@
-"""v2/engine/player.js: the reaction table picks by intensity, and every name it uses exists in the presets."""
+"""engine/player.js: the reaction table picks by intensity, and every name it uses exists in the presets."""
 import json
 import shutil
 import subprocess
@@ -25,7 +25,7 @@ console.log(JSON.stringify(out));
 @unittest.skipUnless(NODE, 'needs node')
 class PlayerTests(unittest.TestCase):
     def test_pick_reaction(self):
-        r = subprocess.run([NODE, '-e', SCRIPT, str(ROOT / 'v2/engine/player.js'), str(ROOT / 'engine/reactions.default.json')],
+        r = subprocess.run([NODE, '-e', SCRIPT, str(ROOT / 'engine/player.js'), str(ROOT / 'engine/reactions.default.json')],
                            capture_output=True, text=True, check=True)
         out = json.loads(r.stdout)
         self.assertEqual(out['gaze2'], 'tiltTalk')
@@ -36,7 +36,7 @@ class PlayerTests(unittest.TestCase):
     def test_reaction_names_exist(self):
         try:
             import sys
-            sys.path.insert(0, str(ROOT / 'v2' / 'py'))
+            sys.path.insert(0, str(ROOT / 'py'))
             from face_expr import EXPRESSIONS
             from motions import motions
         except ImportError:

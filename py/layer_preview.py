@@ -1,12 +1,12 @@
 """
 Previews of the layers see-through split a picture into, for the dashboards (the PSD itself is not served).
 
-  write_layers(job_dir)   v2/work/<job>/layers/{body,head}/NN_<name>.png (each layer cropped to its drawing, at most
+  write_layers(job_dir)   work/<job>/layers/{body,head}/NN_<name>.png (each layer cropped to its drawing, at most
                           420 px) + layers/layers.json:
                           {"body": {"size": [w, h], "layers": [{"name", "file", "box": [x, y, w, h], "px"}]}, "head": …}
                           box = where the crop sits on the PSD canvas (for the stacked view), px = drawn pixels.
 
-  python v2/py/layer_preview.py v2/work/<job>      (jobs made before this existed)
+  python py/layer_preview.py work/<job>      (jobs made before this existed)
 """
 import json
 import os

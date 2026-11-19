@@ -1,8 +1,8 @@
 {
-  "name": "capsule-model-studio",
+  "name": "aliving2d",
   "version": "0.1.0",
   "private": true,
-  "description": "애니풍 그림 한 장 → Live2D 장인 방식을 AI로 따라가는 자동 리깅 → 캡슐 캐릭터 모델 (v2)",
+  "description": "애니풍 그림 한 장 → Live2D 장인 방식을 AI로 따라가는 자동 리깅 → 캡슐 캐릭터 모델",
   "license": "MIT",
   "scripts": {
     "start": "python serve.py --port 8000",

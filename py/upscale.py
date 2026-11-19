@@ -4,7 +4,7 @@ Anime upscaler: Real-ESRGAN x4plus_anime_6B (RRDBNet, 6 blocks), defined here so
 Weights: .local/models/RealESRGAN_x4plus_anime_6B.pth
   https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth (BSD-3-Clause)
 
-  python v2/py/upscale.py in.png out.png [--scale 4]
+  python py/upscale.py in.png out.png [--scale 4]
 """
 import argparse
 import os
@@ -16,7 +16,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from PIL import Image
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 WEIGHTS = os.path.join(ROOT, '.local', 'models', 'RealESRGAN_x4plus_anime_6B.pth')
 
 

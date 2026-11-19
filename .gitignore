@@ -17,7 +17,7 @@ seethrough_jobs/
 .local/
 
 # v2 model bundles (character art)
-v2/bundles/
+bundles/
 
 # v2 dashboard job folders (pictures, PSDs)
-v2/work/
+work/

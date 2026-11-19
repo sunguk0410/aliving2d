@@ -1,12 +1,12 @@
 """
-Render a bundle v2 (model.json + parts/*.png) in Python, the same rules as v2/engine/engine.js: keyforms add,
+Render a bundle v2 (model.json + parts/*.png) in Python, the same rules as engine/engine.js: keyforms add,
 linear between values and clamped; opacity keyforms multiply; clip = drawn inside the named part (or group);
 mask-only parts are never drawn. Groups are drawn as plain layers (close enough for checking).
 
 For checking models without a browser (one picture per pose, e.g. after a pipeline run):
 
-  python v2/py/render_bundle.py <bundle dir> <out.png> [--scale 0.5] [--set angleX=1 bodyZ=-1 ...]
-  python v2/py/render_bundle.py <bundle dir> <out.png> --sheet      a sheet of the main poses
+  python py/render_bundle.py <bundle dir> <out.png> [--scale 0.5] [--set angleX=1 bodyZ=-1 ...]
+  python py/render_bundle.py <bundle dir> <out.png> --sheet      a sheet of the main poses
 """
 import argparse
 import json

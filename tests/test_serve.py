@@ -35,13 +35,13 @@ class ServeTests(unittest.TestCase):
     def test_static_files(self):
         code, _, head = self.request('GET', '/')
         self.assertEqual(code, 302)
-        self.assertEqual(head['Location'], '/v2/studio/')
-        self.assertEqual(self.request('GET', '/v2/viewer/index.html')[0], 200)
-        self.assertEqual(self.request('GET', '/v2/studio/index.html')[0], 200)
+        self.assertEqual(head['Location'], '/studio/')
+        self.assertEqual(self.request('GET', '/viewer/index.html')[0], 200)
+        self.assertEqual(self.request('GET', '/studio/index.html')[0], 200)
         code, data, _ = self.request('GET', '/api/v2/jobs')
         self.assertEqual(code, 200)
         self.assertIn('jobs', json.loads(data))
-        self.assertEqual(self.request('GET', '/v2/engine/engine.js')[0], 200)
+        self.assertEqual(self.request('GET', '/engine/engine.js')[0], 200)
         code, _, head = self.request('GET', '/lib/vendor/face_mesh/face_mesh_solution_simd_wasm_bin.wasm')
         self.assertEqual(code, 200)
         self.assertEqual(head['Content-Type'], 'application/wasm')
@@ -87,7 +87,7 @@ class ServeTests(unittest.TestCase):
         from unittest import mock
         import serve
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(serve, 'ROOT', tmp):
-            b = Path(tmp) / 'v2' / 'bundles' / 'm1'
+            b = Path(tmp) / 'bundles' / 'm1'
             b.mkdir(parents=True)
             (b / 'model.json').write_text(json.dumps({'params': [{'id': 'eyeSmile'}], 'expressions': []}), encoding='utf-8')
             origin = {'Origin': f'http://127.0.0.1:{self.server.server_port}', 'Content-Type': 'application/json'}
@@ -130,7 +130,7 @@ class ServeTests(unittest.TestCase):
                     break
                 data += chunk
             self.assertIn(b'400', data)
-        self.assertEqual(self.request('GET', '/v2/viewer/index.html')[0], 200, 'server still healthy')
+        self.assertEqual(self.request('GET', '/viewer/index.html')[0], 200, 'server still healthy')
 
 
 if __name__ == '__main__':

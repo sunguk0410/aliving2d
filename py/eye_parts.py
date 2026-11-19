@@ -12,7 +12,7 @@ Per eye:
 Visible pixels always come from the source layers: putting the parts back together gives the source eye again
 (checked by `recompose_error`). Only pixels that were hidden are made up.
 
-  python v2/py/eye_parts.py <see-through psd> <out dir>
+  python py/eye_parts.py <see-through psd> <out dir>
 """
 import json
 import os

@@ -1,7 +1,7 @@
 {
   "format": "capsule-reactions",
   "version": 2,
-  "_comment": "v2: expressions and motions are named, their content lives in each model bundle (model.json expressions / motions, expressions/<name>.exp3.json, motions/<name>.motion3.json; v2/py/face_expr.py, v2/py/motions.py). reactions = Capsule trigger_type -> candidates: motion, expression (held for `hold` ms, then `then` or neutral), talk = ms of talking (mouth) after the motion, intensity 1 눈치 / 2 말 걸기 / 3 서운함, weight = random pick weight.",
+  "_comment": "v2: expressions and motions are named, their content lives in each model bundle (model.json expressions / motions, expressions/<name>.exp3.json, motions/<name>.motion3.json; py/face_expr.py, py/motions.py). reactions = Capsule trigger_type -> candidates: motion, expression (held for `hold` ms, then `then` or neutral), talk = ms of talking (mouth) after the motion, intensity 1 눈치 / 2 말 걸기 / 3 서운함, weight = random pick weight.",
   "reactions": {
     "GREETING": [
       { "motion": "wave", "expression": "smile", "hold": 3000, "talk": 1200 }
