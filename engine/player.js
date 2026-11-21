@@ -40,7 +40,7 @@
   class Player {
     constructor(model, opts) {
       this.model = model;
-      this.opts = Object.assign({ blink: true, breath: true, idle: true, autoLook: true }, opts);
+      this.opts = Object.assign({ blink: true, breath: true, idle: true, autoLook: true, headFollow: 0.6 }, opts);
       this.table = null;
       const json = model.json;
       this.defaults = Object.fromEntries(json.params.map(p => [p.id, p.default ?? 0]));
@@ -145,7 +145,8 @@
           }
           gx = this.wander.x; gy = this.wander.y;
         }
-        this.approach('angleX', gx, 0.06); this.approach('angleY', gy, 0.06);
+        const hf = o.headFollow;                        // the head turns part of the way, the eyes all the way
+        this.approach('angleX', hf * gx, 0.06); this.approach('angleY', hf * gy, 0.06);
         this.approach('eyeX', gx, 0.25); this.approach('eyeY', gy, 0.25);
         this.approach('bodyX', 0.35 * (P.angleX ?? 0), 0.04);
         this.approach('bodyZ', -0.2 * (P.angleX ?? 0), 0.04);

@@ -33,7 +33,7 @@ SEETHROUGH_PORT = seethrough.DEFAULT_PORT
 WORK = Path(ROOT) / 'work'
 EXTRAS = ('physics', 'arms', 'body', 'fx', 'presets')     # py/artisan.py EXTRAS
 JOB_ID = __import__('re').compile(r'[0-9]{4}-[0-9]{6}-[0-9a-f]{4}|[a-z0-9_-]{1,40}')
-STEP_KEYS = ('prepare', 'base', 'upscale', 'body', 'headcrop', 'head', 'mouth', 'smile', 'rig',
+STEP_KEYS = ('prepare', 'base', 'upscale', 'body', 'headcrop', 'head', 'mouth', 'smile', 'ears', 'earsplit', 'rig',
              'front', 'parts')   # the last two: jobs from before the waist-up base
 
 
@@ -149,6 +149,9 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if urlsplit(self.path).path == '/api/v2/jobs':
             return self._json({'jobs': v2_jobs(), 'seethrough': local_seethrough(), 'openai': redraw.key_info()})
+        m = re.fullmatch(r'/api/v2/jobs/([A-Za-z0-9_-]{1,40})/export', urlsplit(self.path).path)
+        if m:                                       # the capsule zip (py/export_capsule.py)
+            return self._export(m.group(1))
         if urlsplit(self.path).path == '/local-config.json':
             # Probed here (not from the page) so the editor never logs a failed connection.
             return self._json({'seethrough': local_seethrough(), 'setup': self._manager_info(), 'redraw': redraw.key_info()})
@@ -175,6 +178,21 @@ class Handler(SimpleHTTPRequestHandler):
             self.rfile.read(size)
         self.close_connection = True
         self.send_error(405)
+
+    def _export(self, job_id):
+        bundle = os.path.join(ROOT, 'bundles', job_id)
+        if not os.path.exists(os.path.join(bundle, 'model.json')):
+            return self._json({'error': '모델이 아직 없습니다'}, 404)
+        sys.path.insert(0, os.path.join(ROOT, 'py'))
+        from export_capsule import make_zip
+        data = make_zip(bundle, job_id)
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/zip')
+        self.send_header('Content-Disposition', f'attachment; filename="{job_id}_capsule.zip"')
+        self.send_header('Content-Length', str(len(data)))
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        self.wfile.write(data)
 
     def _json(self, obj, code=200):
         body = json.dumps(obj, ensure_ascii=False).encode('utf-8')
@@ -332,7 +350,7 @@ class Handler(SimpleHTTPRequestHandler):
                 opts = json.loads(f.read_text(encoding='utf-8'))
             except (OSError, ValueError):
                 opts = {}
-            for k in ('ears',):                    # true / false, or null = automatic
+            for k in ('ears', 'earCover'):         # true / false, or null = automatic
                 if k in got and (got[k] is None or isinstance(got[k], bool)):
                     if got[k] is None:
                         opts.pop(k, None)

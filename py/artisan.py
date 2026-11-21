@@ -246,15 +246,20 @@ def trim_hidden_skin(rig, R):
     return int(cut.sum())
 
 
+# what covers an ear (the hair falls over it)
+EAR_COVERS = ('front hair', 'headwear')
+
+
 # what a model gets beyond the plain one (head turn X / Y, gaze, blink, smile eyes, mouth, brows): the user found the
 # plain first model the most natural (2026-11-16), so these are opt-in, per job (options.json 'extras')
 EXTRAS = ('physics', 'arms', 'body', 'fx', 'presets')
 
 
 def build(rig, deg=20.0, deg_y=14.0, gaze=True, mouth_src=None, mouth_open=None, smile_eyes=None, hair=None,
-          ears=True, extras=()):
+          ears=True, extras=(), ears_covered=None, ears_split=None):
     """mouth_src: the picture the PSD was made from; mouth_open / smile_eyes: the same picture with the mouth
-    open / the eyes smiling (^ ^), drawn by AI - used as drawn states (Live2D 描き目).
+    open / the eyes smiling (^ ^), drawn by AI - used as drawn states (Live2D 描き目); ears_covered: the same
+    picture with the hair falling over the ears (AI), lined up on it; ears_split: its see-through PSD (the hair).
     extras: see EXTRAS ('physics' = hair sway, 'fx' = effect parts)."""
     if hair is None:
         hair = 'physics' in extras
@@ -271,7 +276,20 @@ def build(rig, deg=20.0, deg_y=14.0, gaze=True, mouth_src=None, mouth_open=None,
     if mouth_src:                                   # visible pixels from the original picture (source_paint.py)
         from source_paint import paint_from_source, uncover
         uncover(rig, mouth_src)                     # the neck shows where the picture shows it
-        paint_from_source(rig, mouth_src, order_rank, keep=hidden)
+        # the ear is a part of its own on the side of the head, under the hair (it turns with the head). The picture
+        # shows it between the locks, so the hair over it is not in the picture: it comes from the split of the
+        # same picture drawn with the ears covered (AI; Live2D draws the hair whole). Without that split: the hair
+        # there from the drawing, else see-through's (hair_cover.py) - never repainted with the picture's ear,
+        # which would put a second ear on the hair.
+        from hair_cover import hair_from_split, cover_ears
+        taken = hair_from_split(rig, ears_split, ears_covered, EAR_COVERS)
+        if not taken:
+            under = cover_ears(rig, mouth_src, ears_covered, EAR_COVERS)
+            if under is not None:
+                hidden = under if hidden is None else hidden | under
+        paint_from_source(rig, mouth_src, order_rank, keep=hidden, skip=taken)
+        from source_paint import shade_hidden
+        shade_hidden(rig, mouth_src, order_rank)    # the back hair behind the face: the hair's shadow tone
         from source_paint import clear_fringe
         clear_fringe(rig, mouth_src)
     L = landmarks(rig)

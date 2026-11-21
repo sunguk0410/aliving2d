@@ -35,8 +35,15 @@ def add_gaze(rig, grid=40):
         lash_rgba = lash.rgba if lash else np.zeros_like(white.rgba)
         parts, info, _ = eye_parts(iris.rgba, white.rgba, lash_rgba, im, wm)
         box = info['box']
-        r = info['iris_ellipse'][2]
-        mx, my = 0.45 * r, 0.30 * r
+        cx, cy, r, _ = info['iris_ellipse']
+        # sideways the iris travels until its edge nearly meets the corner of the eye (the white's room beside it,
+        # on the narrower side), at least 0.45 r and at most 0.8 r
+        row = wm[int(round(cy + box[1]))]
+        xs = np.nonzero(row)[0]
+        c = cx + box[0]
+        room = min(c - xs.min(), xs.max() - c) - r if xs.size else 0.0
+        mx = float(np.clip(0.9 * room, 0.45 * r, 0.8 * r))
+        my = 0.30 * r
         new = []
         for key, name, k in (('iris', f'irides_{s}', 1.0), ('pupil', f'pupil_{s}', 1.0),
                              ('highlight2', f'highlight2_{s}', 0.5), ('highlight', f'highlight_{s}', 0.5)):

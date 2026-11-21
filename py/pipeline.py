@@ -13,6 +13,9 @@ base picture, split twice - whole (body) and its head enlarged (face in detail) 
   head      see-through on head.png -> head PSD (the face in detail)
   mouth     GPT: head.png with the mouth open           } while `head` runs (no GPU)
   smile     GPT: head.png with smiling closed eyes ^ ^   }
+  ears      GPT: head.png with the hair over the ears    }
+  earsplit  see-through on ears.png, only when an ear peeks out between the locks (hair_cover.ear_peek) or the
+            job's option `earCover` is true; `earCover` false skips both
   rig       face rig on the head + body parts, composed into bundle v2 in bundles/<job id> (compose.py)
 
 Job folder: work/<id>/ with input.*, status.json and every step's files.
@@ -43,12 +46,16 @@ STEPS = [
     ('head', '얼굴 파츠 (see-through)'),
     ('mouth', '입 벌린 그림 (GPT)'),
     ('smile', '웃는 눈 그림 (GPT)'),
+    ('ears', '귀 덮은 머리 그림 (GPT)'),
+    ('earsplit', '귀 덮은 머리 파츠 (see-through)'),
     ('rig', '리깅 · 합치기 → 모델'),
 ]
 KEYS = [k for k, _ in STEPS]
 # what has to be made again when a step is made again (prepare / base / upscale: everything after them)
-DEPENDS = {'body': {'headcrop', 'head', 'mouth', 'smile', 'rig'}, 'headcrop': {'head', 'mouth', 'smile', 'rig'},
-           'head': {'rig'}, 'mouth': {'rig'}, 'smile': {'rig'}, 'rig': set()}
+DEPENDS = {'body': {'headcrop', 'head', 'mouth', 'smile', 'ears', 'earsplit', 'rig'},
+           'headcrop': {'head', 'mouth', 'smile', 'ears', 'earsplit', 'rig'},
+           'head': {'rig'}, 'mouth': {'rig'}, 'smile': {'rig'}, 'ears': {'earsplit', 'rig'}, 'earsplit': {'rig'},
+           'rig': set()}
 
 PROMPTS = {
     'base': (
@@ -78,9 +85,17 @@ PROMPTS = {
         'hidden.\nEverything else must stay pixel-identical: same head position and angle, same face, eyebrows, '
         'nose, the mouth stays closed exactly as it is, same hair, ears, neck, clothes, lighting, framing and '
         'background. Do not move or redraw anything except the eyes. No text.'),
+    'ears': (
+        'Redraw this exact same picture with ONE change only: the ears are completely hidden under the hair. Where an '
+        'ear shows now, draw the hair falling over it instead - the same strands continuing down naturally, in the '
+        'same hair color, shading and line style, so no part of either ear is visible.\n'
+        'Everything else must stay pixel-identical: same head position and angle, same face, eyes, eyebrows, nose, '
+        'mouth, the same bangs and the same outline of the hair, neck, clothes, lighting, framing and background. '
+        'Do not move or redraw anything except the hair over the ears. No text.'),
 }
 OUT = {'prepare': 'prepared.png', 'base': 'base.png', 'upscale': 'base_2x.png', 'body': 'body.psd',
-       'headcrop': 'head.png', 'head': 'head.psd', 'mouth': 'mouth.png', 'smile': 'smile.png', 'rig': 'bundle.json'}
+       'headcrop': 'head.png', 'head': 'head.psd', 'mouth': 'mouth.png', 'smile': 'smile.png', 'ears': 'ears.png',
+       'earsplit': 'ears.psd', 'rig': 'bundle.json'}
 
 
 class Job:
@@ -159,6 +174,9 @@ def gpt(job, key, src, size='1024x1024'):
     Image.open(src).convert('RGB').save(buf, 'PNG')
     outs = gpt_image.edit(buf.getvalue(), PROMPTS[key], size, 1)
     open(job.f(OUT[key]), 'wb').write(outs[0])
+    if key == 'ears':                               # lined up on the head crop, so its split lines up with head.psd
+        from hair_cover import align_covered
+        return {'shift': align_covered(src, job.f(OUT[key]))}
 
 
 def step_upscale(job):
@@ -272,6 +290,41 @@ def step_head(job):
     return run_seethrough(job.f('head.png'), job.f('head.psd'), lambda **kw: job.set('head', **kw), job.f('st_head'))
 
 
+def step_earsplit(job):
+    # the second picture of the head (Live2D: the hair drawn whole over the ears): the model's hair comes from it
+    return run_seethrough(job.f('ears.png'), job.f('ears.psd'), lambda **kw: job.set('earsplit', **kw),
+                          job.f('st_ears'))
+
+
+def options(job):
+    try:
+        return json.load(open(job.f('options.json'), encoding='utf-8'))
+    except (OSError, ValueError):
+        return {}
+
+
+def ear_cover(job):
+    """Use the covered-ears drawing? The option `earCover` (true / false), else automatic: only when an ear peeks
+    out between the locks (hair_cover.ear_peek, kept in ear_cover.json while head.psd stays the same)."""
+    mode = options(job).get('earCover')
+    if isinstance(mode, bool):
+        return {'cover': mode, 'mode': 'on' if mode else 'off'}
+    if not os.path.exists(job.f('head.psd')):
+        return {'cover': True, 'mode': 'auto'}
+    stamp = os.path.getmtime(job.f('head.psd'))
+    try:
+        got = json.load(open(job.f('ear_cover.json')))
+        if got.get('stamp') == stamp:
+            return got
+    except (OSError, ValueError):
+        pass
+    from hair_cover import ear_peek, needs_cover
+    peeks = ear_peek(job.f('head.psd'), job.f('head.png'))
+    got = {'cover': needs_cover(peeks), 'mode': 'auto', 'peek': peeks, 'stamp': stamp}
+    json.dump(got, open(job.f('ear_cover.json'), 'w'))
+    return got
+
+
 def step_rig(job):
     from compose import compose
     have = lambda n: job.f(n) if os.path.exists(job.f(n)) else None
@@ -279,12 +332,12 @@ def step_rig(job):
     if os.path.isdir(out):
         shutil.rmtree(out)
     box = json.load(open(job.f('head_box.json')))
-    try:
-        opts = json.load(open(job.f('options.json'), encoding='utf-8'))
-    except (OSError, ValueError):
-        opts = {}
+    opts = options(job)
+    if not ear_cover(job)['cover']:                 # the picture's own hair over the ears
+        have = lambda n, have=have: None if n in ('ears.png', 'ears.psd') else have(n)
     m, info = compose(job.f('body.psd'), job.f('base_2x.png'), job.f('head.psd'), box, job.f('head.png'), out,
-                      have('mouth.png'), have('smile.png'), ears=opts.get('ears', True),
+                      have('mouth.png'), have('smile.png'), ears=opts.get('ears', True), ears_covered=have('ears.png'),
+                      ears_split=have('ears.psd'),
                       extras=opts.get('extras') or [])
     json.dump({'bundle': f'bundles/{job.id}/model.json', 'parts': len(m['parts'])},
               open(job.f('bundle.json'), 'w'))
@@ -326,12 +379,30 @@ def main():
         job.run('headcrop', lambda: step_headcrop(job))
     if ok:
         # GPT pictures of the head while see-through splits it (no GPU); the rig works without them if they fail
-        side = [threading.Thread(target=job.run, args=(k, (lambda k=k: gpt(job, k, job.f('head.png'))))) for k in ('mouth', 'smile')]
+        drawn = ('mouth', 'smile') + (() if options(job).get('earCover') is False else ('ears',))
+        side = [threading.Thread(target=job.run, args=(k, (lambda k=k: gpt(job, k, job.f('head.png'))))) for k in drawn]
         for t in side:
             t.start()
         ok = job.run('head', lambda: step_head(job))
         for t in side:
             t.join()
+        # one GPU job at a time: the covered-ears split after the head's; the rig works without it if it fails
+        # ... and only when the ear peeks out between the locks (or the option says so)
+        if ok:
+            try:
+                ec = ear_cover(job)
+            except Exception:  # noqa: BLE001 - the rig decides again
+                traceback.print_exc()
+                ec = {'cover': True, 'mode': 'auto'}
+            why = {'off': '옵션: 안 씀', 'on': '옵션: 씀'}.get(ec['mode']) or                 ('자동: 귀가 머리 사이로 보여서 씀' if ec['cover'] else '자동: 귀가 드러나 있거나 이미 가려져 있어 원본 머리를 씀')
+            for k in ('ears', 'earsplit') if not ec['cover'] else ():
+                if k == 'earsplit' or ec['mode'] == 'off':
+                    job.set(k, status='skipped', error=None, note={'why': why, 'peek': ec.get('peek')})
+            if ec['cover'] and os.path.exists(job.f('ears.png')):
+                job.run('earsplit', lambda: step_earsplit(job))
+                job.set('earsplit', why=why)
+            else:
+                job.set('earsplit', why=why)
         ok = ok and job.run('rig', lambda: step_rig(job))
     job.top(state='done' if ok else 'error', pid=None)
 

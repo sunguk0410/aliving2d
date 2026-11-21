@@ -5,6 +5,11 @@ deformed eye leads up to it, then the drawing fades in over the last stretch.
 
 Each part = the model's own face skin over the eye region (so no seam even if the AI shaded the skin a little
 differently) + the AI drawing's strokes (pixels that are not skin in the AI picture), feathered at the edge.
+The skin under the open eye never shows in the picture: the face layer there is see-through's guess (paler, flat,
+with scraps of lash and hair at its edge). The drawing has that skin (with its blush), so it comes from the drawing,
+toned to the model: the difference model - drawing on the skin both show around the eye, smoothed and carried
+inward (`skin_around`), is added to it - no seam at the edge. Where the drawing has no skin either (its own hair
+strands) the model's skin around is carried in.
 
   add_drawn_eyes(rig, src_png, drawn_png, param='eyeSmile', name='smileeye', fade=(0.8, 0.97))
 """
@@ -20,6 +25,23 @@ sys.path.insert(0, os.path.dirname(__file__))
 from rig import Part  # noqa: E402
 from mouth_rig import load, align  # noqa: E402
 from blink_rig import smile_keys  # noqa: E402
+
+
+def skin_around(face_rgb, known, region, sigmas=(3, 6, 12, 24, 48)):
+    """The face's skin over `region`, filled in from the `known` skin around it: a smooth fill (normalized blur,
+    finest scale that reaches) that carries the picture's shading (the blush under the eye) inward."""
+    out = face_rgb.copy()
+    todo = region & ~known
+    k = known.astype(np.float32)
+    for sg in sigmas:
+        if not todo.any():
+            break
+        w = ndi.gaussian_filter(k, sg)
+        c = np.stack([ndi.gaussian_filter(face_rgb[..., i] * k, sg) for i in range(3)], -1)
+        ok = todo & (w > 0.15)
+        out[ok] = c[ok] / w[ok, None]
+        todo &= ~ok
+    return out
 
 
 def add_drawn_eyes(rig, src_path, drawn_path, param='eyeSmile', name='smileeye', fade=(0.8, 0.97), grid=24):
@@ -38,6 +60,13 @@ def add_drawn_eyes(rig, src_path, drawn_path, param='eyeSmile', name='smileeye',
                 eyes |= p.rgba[..., 3] > 0.2
     keep = (face.rgba[..., 3] > 0.9) & ~ndi.binary_dilation(eyes, iterations=40)
     drw, _ = align(src, drw, keep)
+    # the face's skin the picture shows: on top there (nothing above the face covers it), away from the eyes
+    fi = rig.parts.index(face)
+    above = np.zeros((H, W), bool)
+    for q in rig.parts[fi + 1:]:
+        if not q.mask_only:
+            above |= q.rgba[..., 3] > 0.3
+    shown = (face.rgba[..., 3] > 0.9) & ~ndi.binary_dilation(above | eyes, iterations=4)
     for s in ('r', 'l'):
         white = byname.get(f'eyewhite_{s}')
         if white is None:
@@ -74,7 +103,20 @@ def add_drawn_eyes(rig, src_path, drawn_path, param='eyeSmile', name='smileeye',
         stroke = np.maximum(stroke, ndi.binary_erosion(keep, iterations=1) * 1.0)
         stroke = ndi.gaussian_filter(stroke.astype(np.float32), 0.5)
         rgba = np.zeros((H, W, 4), np.float32)
-        skin = face.rgba[..., :3]
+        area = ndi.binary_dilation(region, iterations=4)
+        own = skin_around(face.rgba[..., :3], shown, area)
+        skinlike = (np.linalg.norm(drw - skin_ai, axis=-1) < 0.15) & ~ndi.binary_dilation(keep, iterations=2)
+        both = shown & skinlike & ndi.binary_dilation(area, iterations=12)
+        diff = face.rgba[..., :3] - drw
+        if both.sum() > 50:
+            kb = both.astype(np.float32)
+            wb = ndi.gaussian_filter(kb, 4)
+            smooth = np.stack([ndi.gaussian_filter(diff[..., i] * kb, 4) for i in range(3)], -1) / np.maximum(wb, 1e-3)[..., None]
+            tone = skin_around(smooth, wb > 0.2, area, sigmas=(4, 8, 16, 32, 64))
+            skin = np.where((area & skinlike)[..., None], np.clip(drw + tone, 0, 1), own)
+            skin = np.where(shown[..., None], face.rgba[..., :3], skin)       # what the picture shows stays
+        else:
+            skin = own
         rgba[..., :3] = skin * (1 - stroke[..., None]) + drw * stroke[..., None]
         edge = ndi.gaussian_filter(region.astype(np.float32), 3.0)
         rgba[..., 3] = np.clip(edge * 1.4, 0, 1) * (face.rgba[..., 3] > 0.5)

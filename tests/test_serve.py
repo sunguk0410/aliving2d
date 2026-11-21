@@ -63,6 +63,13 @@ class ServeTests(unittest.TestCase):
             self.assertEqual(jobs[0]['options'], {'ears': False})
             code, data, _ = self.request('POST', f'/api/v2/jobs/{d.name}/options', b'{"ears": null}', origin)
             self.assertEqual(json.loads(data)['options'], {})
+            # the hair over the ears: the covered drawing on / off, null = automatic
+            code, data, _ = self.request('POST', f'/api/v2/jobs/{d.name}/options', b'{"earCover": false}', origin)
+            self.assertEqual(json.loads(data)['options'], {'earCover': False})
+            code, data, _ = self.request('POST', f'/api/v2/jobs/{d.name}/options', b'{"earCover": "yes"}', origin)
+            self.assertEqual(json.loads(data)['options'], {'earCover': False})
+            code, data, _ = self.request('POST', f'/api/v2/jobs/{d.name}/options', b'{"earCover": null}', origin)
+            self.assertEqual(json.loads(data)['options'], {})
             code, _, _ = self.request('POST', '/api/v2/jobs/nope-job/options', b'{}', origin)
             self.assertEqual(code, 404)
 

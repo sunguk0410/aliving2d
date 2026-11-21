@@ -94,11 +94,13 @@ def edge_weight(H, W, x0, y0, x1, y1, feather_x, feather_bottom):
     return (wx * wy).astype(np.float32)
 
 
-def compose(body_psd, base_png, head_psd, box, head_png, out, mouth_open=None, smile_eyes=None, ears=True, extras=()):
+def compose(body_psd, base_png, head_psd, box, head_png, out, mouth_open=None, smile_eyes=None, ears=True, extras=(), ears_covered=None,
+            ears_split=None):
     img_size = Image.open(base_png).size
     # --- the head: the whole face rig, on its own (finer) canvas
     head = load_psd(head_psd, grid=60)
-    L, R, D = build(head, mouth_src=head_png, mouth_open=mouth_open, smile_eyes=smile_eyes, ears=ears, extras=extras)
+    L, R, D = build(head, mouth_src=head_png, mouth_open=mouth_open, smile_eyes=smile_eyes, ears=ears, extras=extras,
+                     ears_covered=ears_covered, ears_split=ears_split)
     Hh = head.size[0]
     body = load_psd(body_psd, grid=60, skip=BODY_SKIP)
     from source_paint import paint_from_source
@@ -106,6 +108,8 @@ def compose(body_psd, base_png, head_psd, box, head_png, out, mouth_open=None, s
     from source_paint import uncover
     uncover(body, base_png)
     paint_from_source(body, base_png, order_rank)
+    from source_paint import shade_hidden
+    shade_hidden(body, base_png, order_rank)
     from source_paint import clear_fringe
     clear_fringe(body, base_png)
     s, bx, by = psd_map(body.size[1], img_size)

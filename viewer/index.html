@@ -8,9 +8,10 @@
   :root { color-scheme: light; --bg: #f4f2ef; --panel: #fff; --ink: #222; --quiet: #777; --line: #ddd; }
   * { box-sizing: border-box; }
   body { margin: 0; font: 14px/1.5 system-ui, "Malgun Gothic", sans-serif; background: var(--bg); color: var(--ink);
-         display: grid; grid-template-columns: 1fr 280px; height: 100vh; }
-  #stage { position: relative; min-width: 0; }
-  canvas { width: 100%; height: 100%; display: block; }
+         display: grid; grid-template-columns: 1fr 280px; height: 100vh; overflow: hidden; }
+  body { grid-template-rows: minmax(0, 1fr); }
+  #stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }   /* its pixel size never grows the page */
   aside { background: var(--panel); border-left: 1px solid var(--line); padding: 16px; overflow: auto; }
   h1 { font-size: 16px; margin: 0 0 4px; }
   .quiet { color: var(--quiet); font-size: 12px; }
@@ -23,10 +24,42 @@
   .exprs { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
   .exprs button { padding: 3px 8px; font-size: 12px; }
   .exprs button[aria-pressed="true"] { outline: 2px solid currentColor; }
+  /* view pad over the model: zoom - / +, move up / down / left / right, back to start */
+  .pad { position: absolute; right: 12px; top: 12px; display: grid; grid-template-columns: repeat(3, 32px); gap: 4px; align-items: center;
+         background: #fffd; border: 1px solid var(--line); border-radius: 10px; padding: 6px; user-select: none; }
+  .pad button { margin: 0; padding: 0; width: 32px; height: 32px; font-size: 16px; line-height: 1; }
+  .pad .zv { text-align: center; font-size: 12px; color: var(--quiet); }
+  .pad .gap { grid-column: 1 / -1; height: 2px; }
+  #stage.drag { cursor: grabbing; }
+  /* ?theme=dark (the dashboard): dark controls, the model on a light artboard */
+  body.dark { color-scheme: dark; --panel: #16171c; --ink: #ececf1; --quiet: #868899; --line: #2c2e38; --btn: #1d1f26; --on: #9b8cff; }
+  body.dark #stage { background: #f3f1f6; }
+  body.dark button { background: var(--btn); color: var(--ink); }
+  body.dark button:hover { background: #252731; }
+  body.dark button[aria-pressed=true] { background: var(--on); color: #120f24; border-color: var(--on); }
+  body.dark input, body.dark select { background: #0f1014; color: var(--ink); border: 1px solid var(--line); border-radius: 5px; }
+  body.dark input[type=range] { accent-color: var(--on); background: none; border: 0; }
+  body.dark .pad { background: #16171ce6; }
+  /* in the dashboard: just the controls (no title, file path or the expression saving form) */
+  body.dark aside > h1, body.dark #name, body.dark #saveBox, body.dark #saveInfo { display: none; }
+  body.dark aside { padding-top: 4px; } body.dark #exprs:empty { display: none; }
+  .pad .wide { grid-column: 1 / -1; width: auto; font-size: 12px; }
+  /* the controls fold away (⚙), the model takes the whole width */
+  body.fold { grid-template-columns: 1fr; } body.fold aside { display: none; }
 </style>
 </head>
 <body>
-<div id="stage"><canvas id="c"></canvas></div>
+<div id="stage"><canvas id="c"></canvas>
+  <div class="pad" id="pad" title="휠: 확대 · 끌기: 움직이기">
+    <button data-z="-1" aria-label="축소">−</button><span class="zv" id="zv">1.0</span><button data-z="1" aria-label="확대">+</button>
+    <span class="gap"></span>
+    <span></span><button data-m="0,-1" aria-label="위로">↑</button><span></span>
+    <button data-m="-1,0" aria-label="왼쪽으로">←</button><button data-home aria-label="처음 위치" style="font-size:13px">⟲</button><button data-m="1,0" aria-label="오른쪽으로">→</button>
+    <span></span><button data-m="0,1" aria-label="아래로">↓</button><span></span>
+    <span class="gap"></span>
+    <button class="wide" id="foldBtn" aria-label="조절 패널 접기·펴기">⚙ 조절</button>
+  </div>
+</div>
 <aside>
   <h1>Aliving2D 모델 보기</h1>
   <div class="quiet" id="name"></div>
@@ -53,8 +86,7 @@
   <button id="idle" aria-pressed="true">대기 동작</button>
   <button id="cam" aria-pressed="false">카메라로 따라 하기</button>
   <div class="quiet" id="camInfo"></div>
-  <label class="row"><span>확대</span><span id="zv">1.0</span></label>
-  <input id="zoom" type="range" min="0.6" max="3" step="0.05" value="1">
+  <p class="quiet">확대·이동: 그림 오른쪽 위 − + 와 화살표, 마우스 휠, 끌기</p>
   <p class="quiet">주소 뒤에 <code>?model=../bundles/이름/model.json</code></p>
   <div id="err"></div>
 </aside>
@@ -78,7 +110,47 @@
   window.model = m;
   const [W, H] = m.json.canvas;
   let zoom = Number(q.get('zoom') || 1), cx = Number(q.get('cx') || W / 2), cy = Number(q.get('cy') || H / 2);
-  document.getElementById('zoom').value = zoom;
+  // the view: zoom in steps (- / +, wheel), move by a tenth of the view (arrows) or by dragging; ⟲ = as opened
+  const home = [zoom, cx, cy];
+  if (q.get('theme') === 'dark') document.body.classList.add('dark');
+  // ⚙ folds the controls. ?panel=auto (the dashboard): folded while the page is narrow, until the button is used
+  let foldChosen = false;
+  const setFold = f => { document.body.classList.toggle('fold', f); dispatchEvent(new Event('resize')); };
+  document.getElementById('foldBtn').onclick = () => { foldChosen = true; setFold(!document.body.classList.contains('fold')); };
+  if (q.get('panel') === '0') setFold(true);
+  if (q.get('panel') === 'auto') {
+    const auto = () => { if (!foldChosen && document.body.classList.contains('fold') !== (innerWidth < 760)) setFold(innerWidth < 760); };
+    addEventListener('resize', auto); auto();
+  }
+  const ZMIN = 0.5, ZMAX = 6;
+  const zoomBy = f => { zoom = Math.max(ZMIN, Math.min(ZMAX, zoom * f)); };
+  const move = (dx, dy) => { cx += dx * 0.1 * W / zoom; cy += dy * 0.1 * H / zoom; };
+  const pad = document.getElementById('pad');
+  pad.addEventListener('pointerdown', e => e.stopPropagation());
+  pad.onclick = e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.z) zoomBy(b.dataset.z > 0 ? 1.25 : 1 / 1.25);
+    else if (b.dataset.m) { const [dx, dy] = b.dataset.m.split(',').map(Number); move(dx, dy); }
+    else if ('home' in b.dataset) [zoom, cx, cy] = home;
+  };
+  const stageEl = document.getElementById('stage');
+  stageEl.addEventListener('wheel', e => { e.preventDefault(); zoomBy(e.deltaY < 0 ? 1.12 : 1 / 1.12); }, { passive: false });
+  let drag = null;
+  stageEl.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, cx, cy }; stageEl.setPointerCapture(e.pointerId); stageEl.classList.add('drag'); });
+  stageEl.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const r = canvas.getBoundingClientRect(), fit = Math.min(r.width / W, r.height / H) * zoom;   // screen px per model px
+    cx = drag.cx - (e.clientX - drag.x) / fit; cy = drag.cy - (e.clientY - drag.y) / fit;
+  });
+  const endDrag = () => { drag = null; stageEl.classList.remove('drag'); };
+  stageEl.addEventListener('pointerup', endDrag); stageEl.addEventListener('pointercancel', endDrag);
+  addEventListener('keydown', e => {
+    if (/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName)) return;
+    const k = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[e.key];
+    if (k) { move(...k); e.preventDefault(); }
+    else if (e.key === '+' || e.key === '=') zoomBy(1.25);
+    else if (e.key === '-') zoomBy(1 / 1.25);
+  });
   const box = document.getElementById('sliders');
   const inputs = {};
   for (const p of m.json.params) {
@@ -339,12 +411,13 @@
   breathe.onclick = () => toggle(breathe);
   if (q.get('breath') === '0') breathe.setAttribute('aria-pressed', 'false');
   let target = { angleX: 0, angleY: 0, eyeX: 0, eyeY: 0 };
+  const HEAD_FOLLOW = Number(q.get('head') ?? 0.6);   // ?head=1: the head turns as far as the eyes look
   canvas.addEventListener('pointermove', e => {
+    if (drag) return;                                 // dragging moves the view, not the gaze
     const r = canvas.getBoundingClientRect();
     target.angleX = Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width - 0.5) * 2.4));
     target.angleY = Math.max(-1, Math.min(1, -((e.clientY - r.top) / r.height - 0.5) * 2.4));
   });
-  document.getElementById('zoom').oninput = e => { zoom = Number(e.target.value); };
   addEventListener('resize', resize);
   const t0 = performance.now();
   // for checks and links: ?expr=<name> and ?set=id:value,id:value
@@ -362,10 +435,11 @@
     }
     const tracked = camFrame(now);
     if (!tracked && (follow.getAttribute('aria-pressed') === 'true' || swing.getAttribute('aria-pressed') === 'true')) {
-      target.eyeX = target.angleX; target.eyeY = target.angleY;
+      // the eyes look all the way, the head turns only part of the way after them (HEAD_FOLLOW)
+      const goal = { angleX: target.angleX * HEAD_FOLLOW, angleY: target.angleY * HEAD_FOLLOW, eyeX: target.angleX, eyeY: target.angleY };
       for (const [id, k] of [['angleX', 0.12], ['angleY', 0.12], ['eyeX', 0.35], ['eyeY', 0.35]]) {
         if (!(id in m.params)) continue;
-        const v = m.params[id] + (target[id] - m.params[id]) * k;   // the eyes get there first
+        const v = m.params[id] + (goal[id] - m.params[id]) * k;   // the eyes get there first
         m.set(id, v);
         inputs[id].value = v;
       }

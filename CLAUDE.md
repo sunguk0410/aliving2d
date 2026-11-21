@@ -23,10 +23,11 @@
 | `py/eye_parts.py` | 눈동자 원 완성, 동공·하이라이트 분리 |
 | `py/eyes_rig.py` | 시선 `eyeX/eyeY` (흰자로 클립, 하이라이트는 절반만) |
 | `py/blink_rig.py` | 깜빡임 `eyeOpenL/R`, 웃는 눈 `eyeSmile`: 피부 눈꺼풀(얼굴 레이어 픽셀, 속눈썹과 같은 격자, 흰자보다 3px 큰 마스크로 클립), 속눈썹 위·아래·쌍꺼풀(`split_lashes_corners`, `follow_line`) |
-| `py/drawn_eyes.py` | 그린 웃는 눈: GPT ^ ^ 그림의 선만(진한 씨앗에서 키워 통째로, 앞머리 자리는 제외) + 모델 얼굴 피부, `eyeSmile` 0.8~0.97에서 나타남 |
+| `py/drawn_eyes.py` | 그린 웃는 눈: GPT ^ ^ 그림의 선만(진한 씨앗에서 키워 통째로, 앞머리 자리는 제외) + 피부: 원본이 보여 주는 곳은 모델 얼굴, 뜬 눈에 가려졌던 곳은 그림의 피부를 모델 색조로 맞춰(차이를 부드럽게 퍼뜨림, 이음새 없음), `eyeSmile` 0.8~0.97에서 나타남 |
 | `py/mouth_rig.py` | 입 `mouthOpen`, `mouthForm`: GPT 입 벌린 그림 → 입 마스크·입 안·윗입술·아랫입술, 렌즈 모양 중간 키폼, 다문 입 폭의 1.15배로 맞춤 |
 | `py/eyewhite_fill.py` | see-through가 흰자 레이어를 안 주면 그려 넣기: 눈동자 중심 위의 가장 가까운 선(위 속눈썹)과 아래 첫 선(아래 속눈썹) 사이 + 눈동자, 색은 원본의 흰 부분을 부드럽게 퍼뜨림 |
-| `py/source_paint.py` | 쉬는 상태에서 보이는 픽셀은 원본 그림 색으로 다시 칠함 (see-through 다시 그리기 오류 보정) |
+| `py/source_paint.py` | 쉬는 상태에서 보이는 픽셀은 원본 그림 색으로 다시 칠함 (see-through 다시 그리기 오류 보정), 가려진 뒷머리는 머리카락 그림자 색(`shade_hidden`) |
+| `py/hair_cover.py` | 귀는 머리 옆의 파츠(머리와 같이 움직임), 머리카락이 덮음. **그림 두 장**: GPT '귀 덮은 머리' 그림(머리 크롭에 정렬)을 see-through로 한 번 더 나눠 앞머리는 그쪽 PSD(그 그림 색), 귀·얼굴은 원래 PSD. 그 PSD가 없으면 귀 자리만 GPT 그림으로 덧칠, 그것도 없으면 see-through 머리카락. **귀 덮은 머리는 귀가 머리 다발 사이로 엿보일 때만** 씀(`ear_peek` ≥ `PEEK` 0.08, 귀가 드러나 있거나 이미 가려진 그림은 원본 머리), 작업 옵션 `earCover`(true/false, 없으면 자동, 대시보드 '귀 덮은 머리' 단계에서 선택) |
 | `py/hair_rig.py` | 머리카락 흔들림: 레이어는 자르지 않음(사용자 결정, 머리결대로 못 자르면 통째로). 폭을 따라 겹치는 흔들림 구역(합이 1) + 구역마다 두 단 진자 물리 |
 | `py/face_expr.py` | 표정: 눈썹 `browLY/RY`·`browLAngle/RAngle`, 눈동자 크기 `eyeBall`, 입 너비 `mouthWide`(모음 `VOWELS` 아·이·우·에·오 = 벌림·모양·너비 조합, model.json `vowels`), 효과 파츠(홍조 `cheek`, 눈물 `tear`, 어두운 세로선 `gloom`, 땀 `sweat`, 분노 마크 `anger`, 반짝 `sparkle`, 하트 눈 `heartEyes`, 흰 눈 `blankEyes`), 앞머리 위 반투명 눈썹, 표정 프리셋 27개 `EXPRESSIONS` → `expressions/*.exp3.json` |
 | `py/motions.py` | 모션 20개(대기·말하기·끄덕·두 번 끄덕·힐끔·갸웃하며 말하기·두리번·반짝 깨기·고개 돌리기·도리도리·인사·시무룩·깜짝·손 흔들기·만세·박수·기지개·생각·수줍음·신남) → `motions/*.motion3.json` (Live2D motion3, 선형 구간). 팔을 머리 위로 올릴 땐 `arc()`로 곧은 팔이 옆을 지나 원을 그림 |
@@ -34,15 +35,16 @@
 | `py/arm_rig.py` | 팔: `handwear`를 좌우 팔로, 중심선 따라 어깨·팔꿈치(43%)·손목(80%), 회전 디포머 가중치(어깨 → 팔꿈치). `armLX/armLY/armRX/armRY` = 손목 위치(팔 길이 단위, `engine/tracking.js`와 같은 값) → 엔진 IK(`solveArm`), 손목 `handL/handR`(손은 아래팔 회전의 35%를 되돌려 늘어짐) |
 | `py/cloth_rig.py` | 옷·손 물리: 치마 `swaySkirt`(허리띠 고정, 밑단 흔들림, 몸 Z/X/Y로 진자), 손 늦게 따라오기 `handLag<s>`(엔진이 손목 각도에 더함) |
 | `py/compose.py` | 계획 B 합치기: 상반신 PSD(몸) + 머리 크롭 PSD(얼굴, 고해상도) → 한 모델 |
-| `py/pipeline.py` | 명령 하나 파이프라인: 다듬기 → GPT 상반신 원화 → 업스케일 → 몸 see-through → 머리 크롭 → 얼굴 see-through(+입·웃는 눈 GPT) → 리깅. `--from <단계>` |
+| `py/pipeline.py` | 명령 하나 파이프라인: 다듬기 → GPT 상반신 원화 → 업스케일 → 몸 see-through → 머리 크롭 → 얼굴 see-through(+입·웃는 눈·귀 덮은 머리 GPT) → 귀 덮은 머리 see-through → 리깅. `--from <단계>` |
 | `py/render_bundle.py` | 묶음을 Python으로 그려 보기(엔진과 같은 규칙). `--sheet`로 주요 자세 한 장 |
-| `studio/index.html` | 대시보드(`/`): 업로드, 단계 진행, 여기부터 다시, 멈추기, 작업별 옵션(귀 자동/보이기/숨기기), 뷰어, **파츠 분리 보기**(몸·얼굴 see-through 레이어 3D 펼치기·목록, 리깅 파츠) |
+| `studio/index.html` | 대시보드(`/`, 어두운 스튜디오 테마): 왼쪽 작업 레일(+ 새 그림, 아무 데나 끌어 놓기), 위 막대(이름 눌러 바꾸기, 상태, **모델·파츠·그림** 전환, 내보내기), 가운데 무대, 오른쪽 패널(모델: 만드는 동안만 단계·여기부터 다시, 완성 뒤엔 위 막대 '단계'로 / 파츠: 레이어 목록·숨기기 / 그림: 목록). 파츠 무대는 얼굴·귀 덮은 머리·몸 레이어 3D 펼치기와 모델 파츠 카드, 누르면 크게(−/+·휠·끌기·←→). 주소 `#작업/모드` |
+| `py/export_capsule.py` | 캡슐용 내보내기 zip: `model/`(묶음) + `engine/`(engine.js·player.js·반응표) + `index.html`(재생 페이지) + README. 대시보드 '캡슐용 내보내기' = `GET /api/v2/jobs/<id>/export` |
 | `py/export_bundle.py` | 묶음 v2 쓰기 (`model.json` + `parts/*.png`), CLI |
 | `py/gpt_image.py` | OpenAI 이미지 편집(키·모델은 `seethrough/redraw.py`) |
 | `py/upscale.py` | Real-ESRGAN anime 6B (패키지 없이 직접 정의, 가중치 `.local/models/`) |
 | `engine/engine.js` | 브라우저 엔진(WebGL2): 키폼, 불투명도, 섞기 그룹, 클립 마스크, 마스크 전용 파츠, 머리카락 진자 물리(`step`), 팔 회전 디포머 + IK(`model.ARMS`는 tracking.js용) |
 | `engine/player.js` | **캡슐용 플레이어**(UI 없음): `CapsuleV2Player.create(canvas, modelJsonUrl, {reactions})` → 혼자 숨쉬기·깜빡임·대기 모션·두리번, `react(trigger, intensity)`, `setExpression`, `playMotion`, `talk(ms)`, `track({ParamAngleX…})`(카메라 값, Live2D ID), `trackArms`, `lookAt`. 층 순서는 뷰어와 같음. 시험 페이지 `player/` (`?react=GREETING`) |
-| `viewer/index.html` | 뷰어: 표정·모션 버튼, 대기 모션 상시(더하기, `?idle=0`), 아이우에오, 반응 시험, 슬라이더, 마우스 따라 보기, 자동 고개 돌리기, 자동 깜빡임(표정의 눈 뜸에 곱함), 숨쉬기, 손 흔들기, **카메라로 따라 하기**(FaceMesh → `lib/face-features.js`, Hands → `engine/tracking.js` → 팔). 주소 옵션 `?expr=`, `?motion=`, `?set=id:값,…`, `?blink=0`, `?breath=0` |
+| `viewer/index.html` | 뷰어: 표정·모션 버튼, 대기 모션 상시(더하기, `?idle=0`), 아이우에오, 반응 시험, 슬라이더, 마우스 따라 보기, 자동 고개 돌리기, 자동 깜빡임(표정의 눈 뜸에 곱함), 숨쉬기, 손 흔들기, **카메라로 따라 하기**(FaceMesh → `lib/face-features.js`, Hands → `engine/tracking.js` → 팔). 그림 위 확대 −/+·화살표 이동(휠·끌기·키보드도), 시선 따라 보기는 눈은 끝까지·고개는 `?head=`(기본 0.6)만큼. 주소 옵션 `?expr=`, `?motion=`, `?set=id:값,…`, `?blink=0`, `?breath=0` |
 | `bundles/` | 묶음 (캐릭터 그림이라 git 제외) |
 | `serve.py` | `npm start` 로컬 서버. `/` → `/studio/`(대시보드), `/api/v2/jobs`. see-through 설치·자동 실행(`seethrough/manager.py`) |
 | `seethrough/` | see-through 서버·설치(`server.py`, `manager.py`, `desktop.py`), 그림 다듬기 `prepare.py`, OpenAI 키 `redraw.py`, 변환 후 PSD 정리 `fix_psd.py`(서버가 씀). v1의 표정 그림·공부 자세·Colab, 대회용 Studio·Editor(요청 패널)는 2026-11-17에 지움 |

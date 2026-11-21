@@ -148,11 +148,14 @@ if __name__ == '__main__':
     ap.add_argument('--mouth-open', help='the same picture with the mouth open (AI)')
     ap.add_argument('--smile-eyes', help='the same picture with smiling closed eyes ^ ^ (AI)')
     ap.add_argument('--no-ears', action='store_true', help='leave the ears out (hidden under the hair)')
+    ap.add_argument('--ears-covered', help='the same picture with the hair falling over the ears (AI), lined up')
+    ap.add_argument('--ears-split', help='the see-through PSD of --ears-covered (the hair parts come from it)')
     ap.add_argument('--extras', default='', help='comma list of artisan.EXTRAS (physics, fx, presets)')
     a = ap.parse_args()
     extras = [x for x in a.extras.split(',') if x]
     rig = load_psd(a.psd, grid=60)
-    build(rig, mouth_src=a.src, mouth_open=a.mouth_open, smile_eyes=a.smile_eyes, ears=not a.no_ears, extras=extras)
+    build(rig, mouth_src=a.src, mouth_open=a.mouth_open, smile_eyes=a.smile_eyes, ears=not a.no_ears, extras=extras,
+          ears_covered=a.ears_covered, ears_split=a.ears_split)
     from face_expr import EXPR_PARAMS
     m = write(from_rig(rig), rig.size, a.out, params=PARAMS + EXPR_PARAMS, physics=getattr(rig, 'physics', []),
               extras=extras)
